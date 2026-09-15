@@ -1,0 +1,5 @@
+/* miniprogram/pages/export/export.wxss */
+.page { padding: 24rpx; }
+.picker { border: 1rpx solid #e2e8f0; border-radius: 10rpx; padding: 20rpx; background: #fff; }
+button { margin-bottom: 24rpx; }
+.link { color: #2b6cb0; text-decoration: underline; margin-top: 8rpx; }

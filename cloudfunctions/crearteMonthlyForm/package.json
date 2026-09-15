@@ -1,0 +1,7 @@
+// cloudfunctions/createMonthlyForm/package.json
+{
+  "name": "createMonthlyForm",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": { "wx-server-sdk": "~2.6.3" }
+}

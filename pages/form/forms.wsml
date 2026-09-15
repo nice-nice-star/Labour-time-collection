@@ -1,0 +1,52 @@
+<!-- miniprogram/pages/form/form.wxml -->
+<view class="page">
+  <view class="card head">
+    <text class="m">{{month}}</text>
+    <text class="d">截止：{{deadline}}</text>
+    <text wx:if="{{closed}}" class="closed">已截止，不可修改</text>
+  </view>
+
+  <view class="card">
+    <text class="form-label">1. 你本月的值班总工时是多少？</text>
+    <input class="input" type="digit" placeholder="如 12.5" value="{{dutyHours}}"
+           bindinput="onDuty" disabled="{{closed}}" />
+
+    <text class="form-label">2. 你的值班时段是？</text>
+    <input class="input" placeholder="如 每周一 14:00-17:00" value="{{shiftTime}}"
+           bindinput="onShift" disabled="{{closed}}" />
+
+    <text class="form-label">3. 你的值班地点是？</text>
+    <radio-group bindchange="onLocation">
+      <label wx:for="{{locationOptions}}" wx:key="*this" class="radio">
+        <radio value="{{index}}" checked="{{locationIndex === index}}" disabled="{{closed}}" />
+        <text>{{item}}</text>
+      </label>
+    </radio-group>
+
+    <text class="form-label">4. 项目工时统计（默认值为 0）</text>
+    <view class="table">
+      <view class="row head"><text class="c1">产出项目</text><text class="c2">产出个数</text></view>
+      <view class="row" wx:for="{{projectRows}}" wx:key="item">
+        <text class="c1">{{item.item}}</text>
+        <input class="c2 num" type="number" value="{{item.count}}"
+               data-idx="{{index}}" bindinput="onCount" disabled="{{closed}}" />
+      </view>
+    </view>
+
+    <text class="form-label">5. 请提供你参与的项目名称</text>
+    <input class="input" placeholder="项目名称" value="{{projectName}}"
+           bindinput="onProjectName" disabled="{{closed}}" />
+
+    <text class="form-label">6. 额外工时申诉 [可选]</text>
+    <textarea class="textarea" placeholder="选填" value="{{appeal}}"
+              bindinput="onAppeal" disabled="{{closed}}" />
+  </view>
+
+  <view class="card preview">
+    <text>预估总工时：{{preview.totalHours}} h</text>
+    <text>有效工时：{{preview.effectiveHours}} h</text>
+  </view>
+
+  <button wx:if="{{!closed}}" class="btn-primary submit" type="primary"
+          loading="{{submitting}}" bindtap="submit">提交</button>
+</view>

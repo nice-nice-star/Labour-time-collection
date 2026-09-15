@@ -1,0 +1,18 @@
+i/* miniprogram/pages/form/form.wxss */
+.page { padding: 24rpx 24rpx 120rpx; }
+.head { display: flex; flex-direction: column; }
+.m { font-size: 40rpx; font-weight: bold; }
+.d { color: #718096; margin-top: 8rpx; }
+.closed { color: #e53e3e; margin-top: 8rpx; }
+.input { border: 1rpx solid #e2e8f0; border-radius: 10rpx; padding: 20rpx; background: #fff; }
+.textarea { border: 1rpx solid #e2e8f0; border-radius: 10rpx; padding: 20rpx; width: 100%; box-sizing: border-box; min-height: 120rpx; }
+.radio { display: flex; align-items: center; padding: 12rpx 0; }
+.table { border: 1rpx solid #e2e8f0; border-radius: 10rpx; overflow: hidden; }
+.row { display: flex; border-bottom: 1rpx solid #e2e8f0; }
+.row:last-child { border-bottom: none; }
+.row.head { background: #edf2f7; font-weight: bold; }
+.c1 { flex: 1; padding: 16rpx; }
+.c2 { width: 160rpx; padding: 8rpx; text-align: center; }
+.num { border-left: 1rpx solid #e2e8f0; }
+.preview { display: flex; justify-content: space-between; color: #2b6cb0; font-weight: bold; }
+.submit { margin-top: 32rpx; }

@@ -1,0 +1,22 @@
+<!-- miniprogram/pages/export/export.wxml -->
+<view class="page">
+  <view class="card">
+    <text class="form-label">选择要导出的月份</text>
+    <picker range="{{formNames}}" value="{{formIndex}}" bindchange="onForm">
+      <view class="picker">{{formNames[formIndex] || '暂无表单'}}</view>
+    </picker>
+  </view>
+
+  <button class="btn-primary" type="primary" loading="{{calculating}}" bindtap="calculate">
+    开启月度统计（后台自动计算）
+  </button>
+  <button class="btn-primary" type="primary" loading="{{downloading}}" bindtap="exportXlsx">
+    导出 Excel（Year_Month_Day.xlsx）
+  </button>
+
+  <view class="card" wx:if="{{lastResult}}">
+    <text class="form-label">上次导出</text>
+    <text>{{lastResult.filename}}</text>
+    <text class="link" bindtap="preview">点此复制下载链接</text>
+  </view>
+</view>

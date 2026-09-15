@@ -1,0 +1,10 @@
+<!-- login.wxml -->
+<view class="box">
+  <view class="card">
+    <text class="title">首次登录 · 学助认证</text>
+    <text class="tip">姓名与ID必须与内置信息完全一致</text>
+    <input class="input" placeholder="学生助理姓名" value="{{name}}" bindinput="onName" />
+    <input class="input" placeholder="学生助理ID" value="{{studentId}}" bindinput="onId" />
+    <button class="btn" type="primary" loading="{{binding}}" bindtap="bind">绑定微信账号</button>
+  </view>
+</view>

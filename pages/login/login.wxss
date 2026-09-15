@@ -1,0 +1,7 @@
+/* login.wxss */
+.box { padding:60rpx 40rpx; }
+.card { background:#fff; border-radius:16rpx; padding:48rpx 40rpx; box-shadow:0 4rpx 20rpx rgba(0,0,0,.06); }
+.title { display:block; font-size:36rpx; font-weight:bold; }
+.tip { display:block; margin:16rpx 0 40rpx; color:#a0aec0; font-size:26rpx; }
+.input { border:1rpx solid #e2e8f0; border-radius:10rpx; padding:20rpx; margin-bottom:24rpx; }
+.btn { margin-top:16rpx; }

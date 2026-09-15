@@ -1,0 +1,18 @@
+<!-- miniprogram/pages/form-create/form-create.wxml -->
+<view class="page">
+  <view class="card">
+    <text class="form-label">统计月份</text>
+    <picker mode="date" fields="month" value="{{month}}" start="{{minDate}}" bindchange="onMonth">
+      <view class="picker">{{month}}</view>
+    </picker>
+
+    <text class="form-label">表单截止日期</text>
+    <picker mode="date" value="{{deadline}}" start="{{minDate}}" bindchange="onDeadline">
+      <view class="picker">{{deadline || '请选择'}}</view>
+    </picker>
+  </view>
+
+  <button class="btn-primary submit" type="primary" loading="{{submitting}}" bindtap="submit">
+    创建 / 更新月度表单
+  </button>
+</view>

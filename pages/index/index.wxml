@@ -1,0 +1,5 @@
+<!-- index.wxml -->
+<view class="splash">
+  <text class="title">Labour Time Collection</text>
+  <text class="sub">学助工时收集系统</text>
+</view>
