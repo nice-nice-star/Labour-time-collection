@@ -1,0 +1,8 @@
+/* miniprogram/pages/home/home.wxss */
+.home { padding: 40rpx; }
+.header { background: #2b6cb0; color: #fff; border-radius: 16rpx; padding: 40rpx; }
+.name { display: block; font-size: 40rpx; font-weight: bold; }
+.role { font-size: 26rpx; opacity: .85; }
+.grid { display: flex; flex-wrap: wrap; margin-top: 32rpx; }
+.cell { width: 44%; margin: 3%; background: #fff; border-radius: 16rpx; padding: 40rpx 0; text-align: center; box-shadow: 0 4rpx 20rpx rgba(0,0,0,.06); }
+.logout { margin-top: 48rpx; text-align: center; color: #e53e3e; font-size: 28rpx; padding: 20rpx 0; }

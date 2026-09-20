@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
 exports.main = async () => {
+  console.log('OPENID =', cloud.getWXContext().OPENID)
   const { OPENID } = cloud.getWXContext()
 
   // 1. 导出账户（老师）

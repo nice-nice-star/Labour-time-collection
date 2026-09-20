@@ -17,7 +17,7 @@ Page({
         return wx.showToast({ title: res.result.msg, icon: 'none' })
       }
       const app = getApp()
-      app.globalData.role = 'student'
+      app.globalData.role = res.result.role          // 'export' 或 'student'
       app.globalData.user = res.result.user
       wx.showToast({ title: '绑定成功', icon: 'success' })
       setTimeout(() => wx.redirectTo({ url: '/pages/home/home' }), 800)

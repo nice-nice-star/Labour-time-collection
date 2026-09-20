@@ -1,9 +1,10 @@
-<!-- home.wxml -->
+<!-- miniprogram/pages/home/home.wxml -->
 <view class="home">
   <view class="header">
     <text class="name">{{user.name || '导出账户'}}</text>
     <text class="role">{{role === 'export' ? '导出账户' : '学生助理'}}</text>
   </view>
+
   <view class="grid">
     <view class="cell" bindtap="go" data-url="/pages/form/form">填写月度表单</view>
     <block wx:if="{{role === 'export'}}">
@@ -11,4 +12,6 @@
       <view class="cell" bindtap="go" data-url="/pages/export/export">导出数据</view>
     </block>
   </view>
+
+  <view class="logout" bindtap="logout">退出登录</view>
 </view>
