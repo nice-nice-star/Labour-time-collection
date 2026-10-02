@@ -1,4 +1,3 @@
-// cloudfunctions/calculateMonthly/config.json
 {
   "triggers": [
     {

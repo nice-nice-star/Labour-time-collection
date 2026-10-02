@@ -1,0 +1,9 @@
+{
+  "name": "labour-time-collection-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:fixtures": "node scripts/generate-test-fixtures.js"
+  },
+  "engines": { "node": ">=18" }
+}
