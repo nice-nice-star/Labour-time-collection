@@ -1,8 +1,30 @@
-/* miniprogram/pages/home/home.wxss */
-.home { padding: 40rpx; }
-.header { background: #2b6cb0; color: #fff; border-radius: 16rpx; padding: 40rpx; }
-.name { display: block; font-size: 40rpx; font-weight: bold; }
-.role { font-size: 26rpx; opacity: .85; }
-.grid { display: flex; flex-wrap: wrap; margin-top: 32rpx; }
-.cell { width: 44%; margin: 3%; background: #fff; border-radius: 16rpx; padding: 40rpx 0; text-align: center; box-shadow: 0 4rpx 20rpx rgba(0,0,0,.06); }
-.logout { margin-top: 48rpx; text-align: center; color: #e53e3e; font-size: 28rpx; padding: 20rpx 0; }
+.brand-row { display: flex; justify-content: space-between; align-items: center; }
+.date-label { color: #748593; font-size: 23rpx; }
+.welcome { margin: 30rpx 0; }
+.profile { display: flex; align-items: center; margin-bottom: 36rpx; }
+.avatar { width: 76rpx; height: 76rpx; background: #dcece9; color: #157d74; border-radius: 24rpx; text-align: center; line-height: 76rpx; font-weight: 600; font-size: 32rpx; }
+.profile-info { flex: 1; min-width: 0; padding: 0 20rpx; }
+.profile-name { display: block; font-size: 27rpx; font-weight: 600; }
+.profile-id { display: block; color: #81909c; font-size: 22rpx; word-break: break-all; }
+.entry-card { padding: 36rpx; background: linear-gradient(125deg, #17384b, #16645f); color: #fff; border-radius: 28rpx; box-shadow: 0 14rpx 32rpx rgba(25, 69, 76, .13); }
+.entry-top { display: flex; justify-content: space-between; align-items: center; }
+.entry-kicker { font-size: 20rpx; letter-spacing: 3rpx; color: #b6d9d5; }
+.entry-symbol { width: 60rpx; height: 60rpx; border: 1rpx solid #719d9c; border-radius: 50%; text-align: center; line-height: 60rpx; font-size: 36rpx; }
+.entry-title { display: block; font-size: 40rpx; font-weight: 600; margin: 24rpx 0 12rpx; }
+.entry-description { display: block; color: #c5dcdf; font-size: 25rpx; }
+.entry-bottom { display: flex; align-items: center; justify-content: space-between; border-top: 1rpx solid rgba(255,255,255,.18); margin-top: 36rpx; padding-top: 24rpx; font-weight: 600; }
+.entry-arrow { font-size: 36rpx; }
+.tools-heading { margin-top: 40rpx; }
+.tools-heading .helper { margin: 0; }
+.tool-grid { display: flex; justify-content: space-between; margin-bottom: 24rpx; }
+.tool-card { width: 48%; box-sizing: border-box; padding: 28rpx 24rpx; background: #fff; border: 1rpx solid #e6edf0; border-radius: 24rpx; }
+.tool-icon { background: #e8f6f0; color: #16877a; border-radius: 14rpx; width: 64rpx; height: 64rpx; line-height: 64rpx; text-align: center; font-size: 40rpx; margin-bottom: 24rpx; }
+.tool-icon.blue { background: #edf1fa; color: #536d9b; }
+.tool-title, .tool-desc, .tool-link { display: block; }
+.tool-title { font-size: 28rpx; font-weight: 600; }
+.tool-desc { color: #82909a; font-size: 22rpx; margin-top: 10rpx; }
+.tool-link { color: #16877a; font-size: 23rpx; margin-top: 28rpx; }
+.guide { margin-top: 32rpx; }
+.guide-row { display: flex; align-items: baseline; color: #71818e; font-size: 24rpx; margin-top: 20rpx; }
+.guide-dot { color: #169388; font-size: 21rpx; margin-right: 18rpx; }
+.logout { color: #7b8a96; background: transparent; font-size: 24rpx; font-weight: 400; margin-top: 20rpx; }

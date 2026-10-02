@@ -9,9 +9,9 @@
   ],
   "window": {
     "navigationBarTitleText": "学助工时收集",
-    "navigationBarBackgroundColor": "#2b6cb0",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f6fa"
+    "navigationBarBackgroundColor": "#f3f6f8",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f3f6f8"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",

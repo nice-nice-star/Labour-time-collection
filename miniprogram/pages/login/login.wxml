@@ -1,10 +1,13 @@
-<!-- miniprogram/pages/login/login.wxml -->
-<view class="box">
+<view class="page login-page">
+  <view class="login-mark">LT<view class="mark-dot"></view></view>
+  <view class="page-heading"><text class="eyebrow">CPRO / LABOUR TIME</text><text class="page-title">开启你的工时记录</text><text class="page-desc">首次使用，请先完成学助身份认证。</text></view>
   <view class="card">
-    <text class="title">首次登录 · 身份认证</text>
-    <text class="tip">姓名与ID必须与内置信息完全一致</text>
-    <input class="input" placeholder="姓名" value="{{name}}" bindinput="onName" />
-    <input class="input" placeholder="ID" value="{{studentId}}" bindinput="onId" />
-    <button class="btn" type="primary" loading="{{binding}}" bindtap="bind">绑定微信账号</button>
+    <view class="section-heading"><text class="section-title">绑定学助身份</text><text class="badge">首次登录</text></view>
+    <text class="form-label">姓名</text><input class="input" placeholder-class="placeholder" placeholder="请输入真实姓名" value="{{name}}" bindinput="onName" disabled="{{binding}}" />
+    <text class="form-label">学助 ID</text><input class="input" placeholder-class="placeholder" placeholder="请输入学助 ID" value="{{studentId}}" bindinput="onId" disabled="{{binding}}" />
+    <text class="helper">姓名与 ID 需与登记的学助信息完全一致。</text>
+    <button class="btn-primary bind-button" loading="{{binding}}" disabled="{{binding || !name || !studentId}}" bindtap="bind">{{binding ? '正在验证身份' : '绑定微信账号'}}</button>
   </view>
+  <view class="notice">绑定后，下次打开将自动识别身份，无需重复填写。若信息无法匹配，请联系负责老师核对。</view>
+  <text class="footer-note">每一份投入，都值得被记录。</text>
 </view>

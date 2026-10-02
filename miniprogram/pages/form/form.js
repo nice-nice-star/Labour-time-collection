@@ -5,7 +5,7 @@ const { calcHours } = require('../../utils/calc')
 Page({
   data: {
     month: '', deadline: '', status: '',
-    closed: false,
+    closed: false, loading: true, loadError: '', hasSubmission: false,
     dutyHours: '', shiftTime: '', locationIndex: -1,
     locationOptions: LOCATION_OPTIONS,
     projectRows: PROJECT_ROWS.map(r => ({ ...r, count: 0 })),
@@ -15,20 +15,30 @@ Page({
   },
 
   async onLoad() {
-    const res = await wx.cloud.callFunction({ name: 'getForm' })
-    const r = res.result
-    if (!r.ok) {
-      wx.showToast({ title: r.msg, icon: 'none' })
-      return
+    await this.loadForm()
+  },
+
+  async loadForm() {
+    this.setData({ loading: true, loadError: '' })
+    try {
+      const res = await wx.cloud.callFunction({ name: 'getForm' })
+      const r = res.result
+      if (!r.ok) { this.setData({ loadError: r.msg || '本月暂无可用表单' }); return }
+      const deadlineTime = r.form.deadline ? new Date(r.form.deadline.replace(/-/g, '/')).getTime() : NaN
+      const closed = r.form.status !== 'open' || Date.now() > deadlineTime
+      this.setData({ month: r.form.month, deadline: r.form.deadline, status: r.form.status, closed, hasSubmission: !!r.submission })
+      if (r.submission) this.fillExisting(r.submission)
+      else this.recalc()
+    } catch (e) {
+      this.setData({ loadError: '网络连接失败，请稍后重试' })
+    } finally {
+      this.setData({ loading: false })
     }
-    const closed = r.form.status === 'closed' || r.form.status === 'calculated'
-    this.setData({ month: r.form.month, deadline: r.form.deadline, status: r.form.status, closed })
-    if (r.submission) this.fillExisting(r.submission)
   },
 
   fillExisting(s) {
     this.setData({
-      dutyHours: s.answers.answer1 || '',
+      dutyHours: s.answers.answer1 == null ? '' : s.answers.answer1,
       shiftTime: s.answers.answer2 || '',
       locationIndex: LOCATION_OPTIONS.indexOf(s.answers.answer3),
       projectRows: PROJECT_ROWS.map(pr => {
@@ -47,7 +57,7 @@ Page({
 
   onCount(e) {
     const idx = e.currentTarget.dataset.idx
-    this.setData({ [`projectRows[${idx}].count`]: Number(e.detail.value) || 0 })
+    this.setData({ [`projectRows[${idx}].count`]: Math.max(0, Math.floor(Number(e.detail.value) || 0)) })
     this.recalc()
   },
 
@@ -62,8 +72,10 @@ Page({
   },
 
   async submit() {
+    if (this.data.submitting || this.data.loading || this.data.loadError) return
     if (this.data.closed) return wx.showToast({ title: '表单已截止', icon: 'none' })
     const { dutyHours, shiftTime, locationIndex, projectRows, projectName, appeal } = this.data
+    if (dutyHours === '' || !Number.isFinite(Number(dutyHours)) || Number(dutyHours) < 0) return wx.showToast({ title: '请填写有效的值班工时', icon: 'none' })
     if (locationIndex < 0) return wx.showToast({ title: '请选择值班地点', icon: 'none' })
 
     this.setData({ submitting: true })
@@ -74,7 +86,7 @@ Page({
       })
       const r = res.result
       if (!r.ok) return wx.showToast({ title: r.msg, icon: 'none' })
-      this.setData({ preview: r.calc })
+      this.setData({ preview: r.calc, hasSubmission: true })
       wx.showToast({ title: '提交成功', icon: 'success' })
     } catch (e) {
       wx.showToast({ title: '提交失败', icon: 'none' })

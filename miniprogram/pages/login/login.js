@@ -3,6 +3,7 @@ Page({
   onName(e) { this.setData({ name: e.detail.value }) },
   onId(e) { this.setData({ studentId: e.detail.value }) },
   async bind() {
+    if (this.data.binding) return
     const { name, studentId } = this.data
     if (!name.trim() || !studentId.trim()) {
       return wx.showToast({ title: '请填写姓名与ID', icon: 'none' })

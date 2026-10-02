@@ -1,52 +1,29 @@
-<!-- miniprogram/pages/form/form.wxml -->
-<view class="page">
-  <view class="card head">
-    <text class="m">{{month}}</text>
-    <text class="d">截止：{{deadline}}</text>
-    <text wx:if="{{closed}}" class="closed">已截止，不可修改</text>
-  </view>
-
-  <view class="card">
-    <text class="form-label">1. 你本月的值班总工时是多少？</text>
-    <input class="input" type="digit" placeholder="如 12.5" value="{{dutyHours}}"
-           bindinput="onDuty" disabled="{{closed}}" />
-
-    <text class="form-label">2. 你的值班时段是？</text>
-    <input class="input" placeholder="如 每周一 14:00-17:00" value="{{shiftTime}}"
-           bindinput="onShift" disabled="{{closed}}" />
-
-    <text class="form-label">3. 你的值班地点是？</text>
-    <radio-group bindchange="onLocation">
-      <label wx:for="{{locationOptions}}" wx:key="*this" class="radio">
-        <radio value="{{index}}" checked="{{locationIndex === index}}" disabled="{{closed}}" />
-        <text>{{item}}</text>
-      </label>
-    </radio-group>
-
-    <text class="form-label">4. 项目工时统计（默认值为 0）</text>
-    <view class="table">
-      <view class="row head"><text class="c1">产出项目</text><text class="c2">产出个数</text></view>
-      <view class="row" wx:for="{{projectRows}}" wx:key="item">
-        <text class="c1">{{item.item}}</text>
-        <input class="c2 num" type="number" value="{{item.count}}"
-               data-idx="{{index}}" bindinput="onCount" disabled="{{closed}}" />
-      </view>
+<view class="page form-page">
+  <view wx:if="{{loading}}" class="card state-card"><text class="state-title">正在读取月度表单</text><text class="helper">请稍候，正在同步你的填报记录。</text></view>
+  <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">暂时无法填写</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForm">重新加载</button></view>
+  <block wx:else>
+    <view class="page-heading"><text class="eyebrow">MONTHLY REPORT</text><view class="report-heading"><text class="page-title">{{month}} 工时填报</text><text class="badge {{closed ? 'badge-muted' : ''}}">{{closed ? '已截止' : '填报中'}}</text></view><text class="page-desc">截止时间 · {{deadline}}</text></view>
+    <view wx:if="{{closed}}" class="notice">本月填报已截止，以下为你的工时记录。</view>
+    <view wx:elif="{{hasSubmission}}" class="notice">本月记录已提交。截止前可修改，再次提交后将更新记录。</view>
+    <view class="card">
+      <view class="section-heading"><view><text class="section-index">01</text><text class="section-title">值班记录</text></view><text class="helper">基础工时</text></view>
+      <text class="form-label field-first">本月值班总工时</text>
+      <view class="input-unit"><input class="input" type="digit" placeholder-class="placeholder" placeholder="例如 12.5" value="{{dutyHours}}" bindinput="onDuty" disabled="{{closed || submitting}}" /><text class="unit">小时</text></view>
+      <text class="form-label">值班时段</text><input class="input" placeholder-class="placeholder" placeholder="例如 每周一 14:00–17:00" value="{{shiftTime}}" bindinput="onShift" disabled="{{closed || submitting}}" />
+      <text class="form-label">值班地点</text>
+      <radio-group bindchange="onLocation"><label wx:for="{{locationOptions}}" wx:key="*this" class="location-option {{locationIndex === index ? 'location-selected' : ''}}"><radio color="#11877f" value="{{index}}" checked="{{locationIndex === index}}" disabled="{{closed || submitting}}" /><text>{{item}}</text></label></radio-group>
     </view>
-
-    <text class="form-label">5. 请提供你参与的项目名称</text>
-    <input class="input" placeholder="项目名称" value="{{projectName}}"
-           bindinput="onProjectName" disabled="{{closed}}" />
-
-    <text class="form-label">6. 额外工时申诉 [可选]</text>
-    <textarea class="textarea" placeholder="选填" value="{{appeal}}"
-              bindinput="onAppeal" disabled="{{closed}}" />
-  </view>
-
-  <view class="card preview">
-    <text>预估总工时：{{preview.totalHours}} h</text>
-    <text>有效工时：{{preview.effectiveHours}} h</text>
-  </view>
-
-  <button wx:if="{{!closed}}" class="btn-primary submit" type="primary"
-          loading="{{submitting}}" bindtap="submit">提交</button>
+    <view class="card">
+      <view class="section-heading"><view><text class="section-index">02</text><text class="section-title">项目产出</text></view><text class="helper">填写完成数量</text></view>
+      <view class="table-heading"><text>产出项目 / 折算标准</text><text>数量</text></view>
+      <view class="project-row" wx:for="{{projectRows}}" wx:key="item"><view class="project-info"><text class="project-title">{{item.item}}</text><text class="project-rate">{{item.hours === '待定' ? '工时待定 · 暂不计入' : item.hours + ' 小时 / 个'}}</text></view><input class="count-input" type="number" maxlength="6" value="{{item.count}}" data-idx="{{index}}" bindinput="onCount" disabled="{{closed || submitting}}" aria-label="{{item.item + '产出数量'}}" /></view>
+    </view>
+    <view class="card">
+      <view class="section-heading"><view><text class="section-index">03</text><text class="section-title">补充说明</text></view></view>
+      <text class="form-label field-first">参与的项目名称</text><input class="input" placeholder-class="placeholder" placeholder="填写项目名称，多个项目可用顿号分隔" value="{{projectName}}" bindinput="onProjectName" disabled="{{closed || submitting}}" />
+      <text class="form-label">额外工时申诉 <text class="optional">选填</text></text><textarea class="textarea" placeholder-class="placeholder" placeholder="如有额外工时，请说明工作内容与时长" maxlength="1000" value="{{appeal}}" bindinput="onAppeal" disabled="{{closed || submitting}}" /><text class="helper">请提供清晰的说明，便于负责老师核对。</text>
+    </view>
+    <view class="card summary-card"><text class="section-title">工时预估</text><view class="summary-grid"><view><text class="metric-label">总工时</text><view><text class="metric-value">{{preview.totalHours}}</text><text class="metric-unit"> h</text></view></view><view><text class="metric-label">有效工时</text><view><text class="metric-value accent">{{preview.effectiveHours}}</text><text class="metric-unit"> h</text></view></view></view><text class="helper">按现有规则折算；学生主管总工时 × 1.5，有效工时最低为 40 小时。</text></view>
+    <view class="submit-bar" wx:if="{{!closed}}"><view class="submit-info"><text class="submit-caption">预估有效工时</text><text class="submit-total">{{preview.effectiveHours}} <text class="metric-unit">h</text></text></view><button class="btn-primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">{{submitting ? '正在提交' : (hasSubmission ? '更新本月记录' : '提交本月记录')}}</button></view>
+  </block>
 </view>

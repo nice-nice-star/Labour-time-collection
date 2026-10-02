@@ -1,22 +1,12 @@
-<!-- miniprogram/pages/export/export.wxml -->
 <view class="page">
-  <view class="card">
-    <text class="form-label">选择要导出的月份</text>
-    <picker range="{{formNames}}" value="{{formIndex}}" bindchange="onForm">
-      <view class="picker">{{formNames[formIndex] || '暂无表单'}}</view>
-    </picker>
-  </view>
-
-  <button class="btn-primary" type="primary" loading="{{calculating}}" bindtap="calculate">
-    开启月度统计（后台自动计算）
-  </button>
-  <button class="btn-primary" type="primary" loading="{{downloading}}" bindtap="exportXlsx">
-    导出 Excel（Year_Month_Day.xlsx）
-  </button>
-
-  <view class="card" wx:if="{{lastResult}}">
-    <text class="form-label">上次导出</text>
-    <text>{{lastResult.filename}}</text>
-    <text class="link" bindtap="preview">点此复制下载链接</text>
-  </view>
+  <view class="page-heading"><text class="eyebrow">DATA &amp; EXPORT</text><text class="page-title">让每月工时一目了然</text><text class="page-desc">选择统计月份，汇总并导出工时记录。</text></view>
+  <view wx:if="{{loading}}" class="card state-card"><text class="state-title">正在加载表单</text><text class="helper">正在获取月度记录与提交人数。</text></view>
+  <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">加载失败</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForms">重新加载</button></view>
+  <view wx:elif="{{!forms.length}}" class="card state-card"><text class="state-title">还没有月度表单</text><text class="helper">创建表单并收集记录后，即可在这里统计和导出。</text><button class="btn-secondary" bindtap="goCreate">创建月度表单</button></view>
+  <block wx:else>
+    <view class="card"><text class="form-label field-first">选择统计月份</text><picker range="{{formNames}}" value="{{formIndex}}" bindchange="onForm" disabled="{{calculating || downloading}}"><view class="picker"><text>{{formNames[formIndex]}}</text><text class="chevron">›</text></view></picker><view class="export-overview"><view><text class="count">{{forms[formIndex].count}}</text><text class="helper">已提交人数</text></view><text class="badge">{{forms[formIndex].statusLabel}}</text></view></view>
+    <view class="card"><text class="section-title">汇总与导出</text><text class="helper action-help">月度统计会处理所有已截止的表单；Excel 导出仅针对上方选中的月份。</text><button class="btn-secondary" loading="{{calculating}}" disabled="{{calculating || downloading}}" bindtap="calculate">{{calculating ? '正在统计' : '执行月度统计'}}</button><button class="btn-primary" loading="{{downloading}}" disabled="{{calculating || downloading}}" bindtap="exportXlsx">{{downloading ? '正在生成文件' : '导出 Excel 文件'}}</button></view>
+  </block>
+  <view class="card result-card" wx:if="{{lastResult}}"><text class="badge">导出成功</text><text class="result-title">{{lastResult.filename}}</text><text class="helper">下载链接已生成，可复制后在浏览器中打开。</text><button class="btn-secondary" bindtap="preview">复制下载链接</button></view>
+  <text class="footer-note">CPRO · 月度工时管理</text>
 </view>

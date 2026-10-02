@@ -1,9 +1,13 @@
 const app = getApp()
 Page({
-  data: { role: '', user: null },
+  data: { role: '', user: null, currentMonth: '', avatarText: '' },
 
   onShow() {
-    this.setData({ role: app.globalData.role, user: app.globalData.user })
+    const now = new Date()
+    const user = app.globalData.user
+    this.setData({ role: app.globalData.role, user,
+      avatarText: user && user.name ? user.name.slice(0, 1) : '管',
+      currentMonth: `${now.getFullYear()} 年 ${now.getMonth() + 1} 月` })
   },
 
   go(e) {

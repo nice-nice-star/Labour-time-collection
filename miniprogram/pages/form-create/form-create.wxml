@@ -1,18 +1,11 @@
-<!-- miniprogram/pages/form-create/form-create.wxml -->
 <view class="page">
+  <view class="page-heading"><text class="eyebrow">MONTHLY SETUP</text><text class="page-title">开启新一月的记录</text><text class="page-desc">设置统计周期，让学助按时完成工时填报。</text></view>
   <view class="card">
-    <text class="form-label">统计月份</text>
-    <picker mode="date" fields="month" value="{{month}}" start="{{minDate}}" bindchange="onMonth">
-      <view class="picker">{{month}}</view>
-    </picker>
-
-    <text class="form-label">表单截止日期</text>
-    <picker mode="date" value="{{deadline}}" start="{{minDate}}" bindchange="onDeadline">
-      <view class="picker">{{deadline || '请选择'}}</view>
-    </picker>
+    <view class="section-heading"><text class="section-title">月度表单设置</text><text class="badge">管理功能</text></view>
+    <text class="form-label">统计月份</text><picker mode="date" fields="month" value="{{month}}" start="{{minDate}}" bindchange="onMonth" disabled="{{submitting}}"><view class="picker"><text>{{month}}</text><text class="chevron">›</text></view></picker>
+    <text class="form-label">填报截止日期</text><picker mode="date" value="{{deadline}}" start="{{minDate}}" bindchange="onDeadline" disabled="{{submitting}}"><view class="picker"><text class="{{deadline ? '' : 'placeholder'}}">{{deadline || '请选择截止日期'}}</text><text class="chevron">›</text></view></picker><text class="helper">所选日期当天 23:59:59 截止填报。</text>
   </view>
-
-  <button class="btn-primary submit" type="primary" loading="{{submitting}}" bindtap="submit">
-    创建 / 更新月度表单
-  </button>
+  <view class="notice"><text class="notice-title">发布前确认</text><text>如该月份已有表单，将更新对应表单设置。请确认月份与截止日期无误。</text></view>
+  <button class="btn-primary" loading="{{submitting}}" disabled="{{submitting || !month || !deadline}}" bindtap="submit">{{submitting ? '正在保存' : '创建 / 更新月度表单'}}</button>
+  <text class="footer-note">CPRO · 月度工时管理</text>
 </view>

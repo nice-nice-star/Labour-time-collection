@@ -1,17 +1,20 @@
-<!-- miniprogram/pages/home/home.wxml -->
-<view class="home">
-  <view class="header">
-    <text class="name">{{user.name || '导出账户'}}</text>
-    <text class="role">{{role === 'export' ? '导出账户' : '学生助理'}}</text>
+<view class="page home">
+  <view class="brand-row"><text class="eyebrow">CPRO / WORKSPACE</text><text class="date-label">{{currentMonth}}</text></view>
+  <view class="welcome"><text class="page-title">你好，{{user.name || '老师'}}</text><text class="page-desc">每一份投入，都值得被记录。</text></view>
+  <view class="profile"><view class="avatar">{{avatarText}}</view><view class="profile-info"><text class="profile-name">{{user.name || '管理账户'}}</text><text class="profile-id">{{user.studentId ? '学助 ID · ' + user.studentId : '月度工时管理'}}</text></view><text class="badge">{{role === 'export' ? '管理老师' : (user.isSupervisor ? '学生主管' : '学生助理')}}</text></view>
+  <view class="entry-card" bindtap="go" data-url="/pages/form/form" hover-class="tap-feedback" role="button" aria-label="填写月度工时">
+    <view class="entry-top"><text class="entry-kicker">MONTHLY REPORT</text><view class="entry-symbol">↗</view></view>
+    <text class="entry-title">记录本月的付出</text><text class="entry-description">填写值班与项目工时，汇总你的月度工作。</text>
+    <view class="entry-bottom"><text>填写月度表单</text><text class="entry-arrow">→</text></view>
   </view>
-
-  <view class="grid">
-    <view class="cell" bindtap="go" data-url="/pages/form/form">填写月度表单</view>
-    <block wx:if="{{role === 'export'}}">
-      <view class="cell" bindtap="go" data-url="/pages/form-create/form-create">构建月度表单</view>
-      <view class="cell" bindtap="go" data-url="/pages/export/export">导出数据</view>
-    </block>
-  </view>
-
-  <view class="logout" bindtap="logout">退出登录</view>
+  <block wx:if="{{role === 'export'}}">
+    <view class="section-heading tools-heading"><text class="section-title">管理工作台</text><text class="helper">月度统计与归档</text></view>
+    <view class="tool-grid">
+      <view class="tool-card" bindtap="go" data-url="/pages/form-create/form-create" hover-class="tap-feedback" role="button"><view class="tool-icon">＋</view><text class="tool-title">创建月度表单</text><text class="tool-desc">设置月份与截止日期</text><text class="tool-link">前往设置 →</text></view>
+      <view class="tool-card" bindtap="go" data-url="/pages/export/export" hover-class="tap-feedback" role="button"><view class="tool-icon blue">↓</view><text class="tool-title">统计与导出</text><text class="tool-desc">汇总工时，导出 Excel</text><text class="tool-link">查看数据 →</text></view>
+    </view>
+  </block>
+  <view class="card guide"><text class="section-title">填报小提示</text><view class="guide-row"><text class="guide-dot">01</text><text>提前整理值班时段和项目产出数量。</text></view><view class="guide-row"><text class="guide-dot">02</text><text>截止前可以重新提交，更新本月记录。</text></view></view>
+  <button class="logout" bindtap="logout">退出当前账号</button>
+  <text class="footer-note">CPRO · 学助工时收集</text>
 </view>

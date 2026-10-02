@@ -1,5 +1,1 @@
-<!-- index.wxml -->
-<view class="splash">
-  <text class="title">Labour Time Collection</text>
-  <text class="sub">学助工时收集系统</text>
-</view>
+<view class="splash"><view class="splash-mark">LT</view><text class="eyebrow">CPRO / LABOUR TIME</text><text class="title">记录每一份投入</text><text class="sub">学助工时收集系统</text><view class="login-state"><view wx:if="{{!loginError}}" class="loading-dot"></view><text class="helper">{{loginError ? '连接失败，请检查网络后重试' : '正在识别你的身份…'}}</text><button wx:if="{{loginError}}" class="btn-secondary" bindtap="checkLogin">重新登录</button></view></view>

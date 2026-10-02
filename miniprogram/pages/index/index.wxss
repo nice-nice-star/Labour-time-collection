@@ -1,4 +1,8 @@
-/* index.wxss */
-.splash { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
-.title { font-size:44rpx; font-weight:bold; color:#2b6cb0; }
-.sub { margin-top:16rpx; color:#718096; }
+.splash { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 90vh; padding: 0 40rpx; }
+.splash-mark { width: 120rpx; height: 120rpx; line-height: 120rpx; border-radius: 34rpx; text-align: center; color: #fff; background: linear-gradient(135deg, #17384b, #16877a); font-size: 48rpx; font-weight: 700; margin-bottom: 40rpx; }
+.title { font-size: 44rpx; font-weight: 600; margin-top: 20rpx; }
+.sub { color: #7a8b96; font-size: 26rpx; margin-top: 12rpx; }
+.login-state { margin-top: 72rpx; text-align: center; }
+.login-state button { margin-top: 24rpx; }
+.loading-dot { margin: 0 auto 24rpx; width: 14rpx; height: 14rpx; border-radius: 50%; background: #16877a; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.2); } }

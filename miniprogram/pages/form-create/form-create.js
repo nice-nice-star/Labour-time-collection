@@ -19,6 +19,7 @@ Page({
   onDeadline(e) { this.setData({ deadline: e.detail.value }) },
 
   async submit() {
+    if (this.data.submitting) return
     const { month, deadline } = this.data
     if (!month || !deadline) return wx.showToast({ title: '请选择月份与截止日期', icon: 'none' })
     this.setData({ submitting: true })

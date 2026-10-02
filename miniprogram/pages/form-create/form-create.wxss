@@ -1,4 +1,1 @@
-/* miniprogram/pages/form-create/form-create.wxss */
-.page { padding: 24rpx; }
-.picker { border: 1rpx solid #e2e8f0; border-radius: 10rpx; padding: 20rpx; background: #fff; }
-.submit { margin-top: 32rpx; }
+.notice-title { display: block; font-weight: 600; margin-bottom: 8rpx; }
