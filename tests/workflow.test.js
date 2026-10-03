@@ -2,14 +2,15 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHarness } = require('./helpers/cloud-harness')
 const { calcHours } = require('../miniprogram/utils/calc')
-const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, resolveProjectKey, labelOf, normalizeProjectRows } = require('../miniprogram/config/constants')
+const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, resolveProjectKey, labelOf, normalizeProjectRows, DEPARTMENTS, DEPARTMENT_ALIASES, resolveDepartment } = require('../miniprogram/config/constants')
 const { resolveCloudEnv } = require('../miniprogram/config/environment')
 
 function fixture() {
   return {
     students: [
-      { _id: 'a', name: '学助甲', studentId: 'S1', openid: 'wx-a', isSupervisor: false },
-      { _id: 'b', name: '主管乙', studentId: 'S2', openid: 'wx-b', isSupervisor: true },
+      // 主管乙的名单值故意写成 'cpro ' 用于验证归一化；待绑定丙故意缺 department 用于验证空字符串
+      { _id: 'a', name: '学助甲', studentId: 'S1', openid: 'wx-a', isSupervisor: false, department: 'CPRO' },
+      { _id: 'b', name: '主管乙', studentId: 'S2', openid: 'wx-b', isSupervisor: true, department: 'cpro ' },
       { _id: 'c', name: '待绑定丙', studentId: 'S3', isSupervisor: false }
     ],
     export_accounts: [{ _id: 't', name: '老师', exportId: 'T1', openid: 'wx-teacher' }],
@@ -43,6 +44,60 @@ test('前端与云端的费率表、标签表完全一致（防止键值分离�
   // 标签表与键值转换必须同步
   assert.deepEqual(PROJECT_LABELS, cloudConstants.PROJECT_LABELS)
   assert.equal(Object.keys(PROJECT_LABELS).length, 13)
+})
+
+test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly 三处完全一致', () => {
+  const submitConstants = require('../cloudfunctions/submitForm/constants')
+  const calcConstants = require('../cloudfunctions/calculateMonthly/constants')
+  assert.deepEqual(DEPARTMENTS, submitConstants.DEPARTMENTS)
+  assert.deepEqual(DEPARTMENTS, calcConstants.DEPARTMENTS)
+  assert.deepEqual(DEPARTMENT_ALIASES, submitConstants.DEPARTMENT_ALIASES)
+  assert.deepEqual(DEPARTMENT_ALIASES, calcConstants.DEPARTMENT_ALIASES)
+  // 每个别名在三处都必须归一到同一个规范值
+  for (const alias of Object.keys(DEPARTMENT_ALIASES)) {
+    const expected = resolveDepartment(alias)
+    assert.equal(submitConstants.resolveDepartment(alias), expected, `submitForm 别名不一致: ${alias}`)
+    assert.equal(calcConstants.resolveDepartment(alias), expected, `calculateMonthly 别名不一致: ${alias}`)
+  }
+
+  // 归一化：忽略大小写与多余空白
+  assert.equal(resolveDepartment('CPRO'), 'CPRO')
+  assert.equal(resolveDepartment('cpro'), 'CPRO')
+  assert.equal(resolveDepartment('  CprO  '), 'CPRO')
+  // 枚举外、留空、非字符串一律空字符串（不静默保留错值）
+  for (const value of ['图书馆', 'CPRO 组', '', '   ', null, undefined, 0]) {
+    assert.equal(resolveDepartment(value), '', `枚举外的值未归一化为空字符串: ${value}`)
+  }
+  // 三处结果必须一致（含名单里可能出现的全角等写法）
+  for (const value of ['CPRO', 'cpro', '  CprO  ', 'ＣＰＲＯ', '图书馆', '', null, undefined]) {
+    const expected = resolveDepartment(value)
+    assert.equal(submitConstants.resolveDepartment(value), expected, `submitForm 归一化不一致: ${value}`)
+    assert.equal(calcConstants.resolveDepartment(value), expected, `calculateMonthly 归一化不一致: ${value}`)
+  }
+})
+
+test('部门别名：中文名与带空格英文都归一到规范值，覆盖全部枚举', async () => {
+  // 每个别名（含大写形式）都必须归一到规范值
+  for (const [alias, canonical] of Object.entries(DEPARTMENT_ALIASES)) {
+    assert.equal(resolveDepartment(alias), canonical, `别名未归一化: ${alias}`)
+    assert.equal(resolveDepartment(alias.toUpperCase()), canonical, `别名大写未归一化: ${alias}`)
+  }
+  // 值班地点里的写法与规范值只差下划线和大小写
+  assert.equal(resolveDepartment('University gift shop'), 'University_Gift_shop')
+  // 别名表是普通对象：原型链上的键不能命中
+  assert.equal(resolveDepartment('constructor'), '')
+  assert.equal(resolveDepartment('toString'), '')
+
+  // 名单里写中文名与带空格英文：提交与补零两条路径都要落成规范值
+  const seed = fixture()
+  seed.students[0].department = '公共关系'
+  seed.students[1].department = 'Domestic social Media'
+  const h = createHarness(seed)
+  await h.call('submitForm', 'wx-a', answer)
+  assert.equal(h.tables.submissions[0].department, 'Public_Relations')
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  await h.call('calculateMonthly', undefined)
+  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').department, 'Domestic_social_Media')
 })
 
 test('稳定键与中文显示文本可双向解析；归一化剔除未知项目、数量取非负整数', () => {
@@ -194,7 +249,60 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
   assert.equal(sheets[0].name, '2026-10')
   assert.equal(sheets[0].data.length, 3)
-  assert.deepEqual(sheets[0].data[0], ['Name', '有效工时', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'Answer6'])
+  assert.deepEqual(sheets[0].data[0], ['Name', '有效工时', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'Answer6', '部门'])
+  // 部门列：已提交者取提交时快照，未提交者取补零时的名单值
+  assert.equal(sheets[0].data.find(row => row[0] === '学助甲').at(-1), 'CPRO')
+  assert.equal(sheets[0].data.find(row => row[0] === '主管乙').at(-1), 'CPRO')
+})
+
+test('部门：按名单落库快照，枚举外与缺失写空字符串，事件参数无法伪造', async () => {
+  const h = createHarness(fixture())
+  await h.call('bindStudent', 'wx-c', { name: '待绑定丙', studentId: 'S3' })
+  // 主管乙名单值是 'cpro '，落库归一化成 CPRO；事件里的 department 不参与写入
+  await h.call('submitForm', 'wx-b', { ...answer, department: '伪造部门' })
+  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').department, 'CPRO')
+  // 名单缺 department：提交仍然成功，部门为空字符串
+  const missing = await h.call('submitForm', 'wx-c', { ...answer, department: 'CPRO' })
+  assert.equal(missing.ok, true)
+  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-c').department, '')
+})
+
+test('部门：未提交者补零同样带部门，导出取提交时的快照而非当前名单', async () => {
+  const seed = fixture()
+  seed.students[1].department = '图书馆'          // 枚举外：补零行应写空字符串
+  seed.students.push({ _id: 'd', name: '主管丁', studentId: 'S4', openid: 'wx-d', isSupervisor: true, department: ' cpro ' })
+  const h = createHarness(seed)
+  await h.call('submitForm', 'wx-a', answer)
+  h.tables.students[0].department = '图书馆'       // 提交后老师改了名单，不影响已落库的快照
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  await h.call('calculateMonthly', undefined)
+
+  const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
+  assert.equal(exported.ok, true)
+  const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
+  const rowOf = name => sheet.data.find(row => row[0] === name)
+  assert.equal(rowOf('学助甲').at(-1), 'CPRO')     // 提交时的快照
+  assert.equal(rowOf('主管乙').at(-1), '')          // 补零行：名单枚举外 → 空字符串
+  assert.equal(rowOf('主管丁').at(-1), 'CPRO')      // 补零行：名单 ' cpro ' → 归一化
+})
+
+test('部门：新增该列之前的历史提交没有 department 字段，导出为空字符串且不报错', async () => {
+  const seed = fixture()
+  seed.submissions = [{
+    _id: 'legacy', formId: 'f', month: '2026-10', openid: 'wx-a',
+    studentId: 'S1', name: '学助甲', isSupervisor: false,   // 旧数据：没有 department 字段
+    answers: { answer1: '30', answer2: '', answer3: 'ABE303', answer4: '见 projectRows', answer5: '', answer6: '' },
+    projectRows: [], calc: { dutyHours: 30, projectHours: 0, totalHours: 30, effectiveHours: 40 },
+    createTime: '2026-10-01', updateTime: '2026-10-01'
+  }]
+  const h = createHarness(seed)
+  const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
+  assert.equal(exported.ok, true)
+  const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
+  assert.equal(sheet.data.length, 2)
+  assert.equal(sheet.data[1][0], '学助甲')
+  assert.equal(sheet.data[1].length, 9)        // 旧行也要补齐到 9 列
+  assert.equal(sheet.data[1].at(-1), '')       // 缺字段 → 空字符串，不是 undefined 或报错
 })
 
 // 已确认的风险明确标记为待办，避免把本地通过误认为已经可上线。

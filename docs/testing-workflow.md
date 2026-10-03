@@ -26,12 +26,12 @@ npm run test:fixtures
 根目录测试只使用 Node 内置模块，无需安装云函数依赖或登录微信。
 第二条命令仅在 `test-artifacts/fixtures/` 生成两个 JSON Lines 文件，每行一个未绑定的虚构账户，不连接云端：
 
-| 集合 | 姓名 | 登录 ID | 主管 |
-| --- | --- | --- | --- |
-| students | 测试学助甲 | TEST-S001 | false |
-| students | 测试主管乙 | TEST-S002 | true |
-| students | 测试未提交丙 | TEST-S003 | false |
-| export_accounts | 测试老师 | TEST-T001 | — |
+| 集合 | 姓名 | 登录 ID | 主管 | 部门 |
+| --- | --- | --- | --- | --- |
+| students | 测试学助甲 | TEST-S001 | false | Administration_and_Data |
+| students | 测试主管乙 | TEST-S002 | true | Overseas_social_Media |
+| students | 测试未提交丙 | TEST-S003 | false | Journalist_News_Center |
+| export_accounts | 测试老师 | TEST-T001 | — | — |
 
 文件名分别是 `students.jsonl`、`export_accounts.jsonl`。按云控制台当前导入格式要求导入，或根据每行内容手动新增记录；如导入界面只接受 `.json` 后缀，可复制为该后缀，保持一行一对象。不要填入本地测试的 `wx-a` 等假 OPENID 来做真机登录。
 
@@ -44,9 +44,9 @@ npm run test:fixtures
 1. 在同一小程序的云开发控制台准备一个独立测试环境，记录它的环境 ID。测试环境与正式环境使用相同集合结构，使用虚构数据，不复制真实个人资料。
 2. 编辑 `miniprogram/config/environment.js` 中的 `test`。`production` 当前保留原代码里的环境 ID，发布前确认它确实是正式环境。
 3. 开发版 `develop`、体验版 `trial` 自动使用 `test`；正式版 `release` 使用 `production`。测试 ID 为空、与正式 ID 相同或版本无法识别时，初始化会抛错并停止连接；不会自动回退正式环境。首次配置前开发工具无法正常联调是预期行为。
-4. 在开发者工具中明确选择测试云环境，分别部署 `cloudfunctions` 下全部 8 个函数并安装云端依赖。函数使用 `DYNAMIC_CURRENT_ENV`；部署目标也必须是测试环境，仅修改前端配置不能替代部署。
+4. 在开发者工具中明确选择测试云环境，分别部署 `cloudfunctions` 下全部 8 个函数并安装云端依赖。函数使用 `DYNAMIC_CURRENT_ENV`；部署目标也必须是测试环境，仅修改前端配置不能替代部署。改动部门字段后至少要重新部署 `submitForm`、`calculateMonthly`、`exportData`（`calculateMonthly` 目录新增的 `constants.js` 随函数一起部署，不需要单独操作）。
 5. 创建 `students`、`export_accounts`、`monthly_forms`、`submissions` 四个集合。前端当前不直接访问数据库，规则应禁止客户端直接读写账户和业务记录，仅允许受控服务端操作；在云端验证这些规则。
-6. 向前两个集合导入虚构账户。`monthly_forms`、`submissions` 本轮开始时为空。为测试环境单独配置并核对 `calculateMonthly/config.json` 的定时触发器。
+6. 向前两个集合导入虚构账户。`students` 记录必须带 `department`，取值用规范值或 README 里的中文名/英文显示名（会归一化成规范值；其他写法写空字符串，导出该列为空）。`monthly_forms`、`submissions` 本轮开始时为空。为测试环境单独配置并核对 `calculateMonthly/config.json` 的定时触发器。
 7. 从真实小程序页面绑定并调用云函数验证身份。控制台直接运行函数的身份上下文不等同于小程序调用；不要用控制台缺少 OPENID 的失败判定真实登录失败。
 
 本次代码修改没有创建云环境、部署函数、导入远端数据或更改远端权限，这些需要在你有权限的微信开发者工具/云控制台中完成。
@@ -80,7 +80,7 @@ npm run test:fixtures
 | A3 | 另一微信绑定同一已绑定账户 | 拒绝，原绑定不变 |
 | A4 | 同一微信尝试绑定第二账户/跨角色绑定 | 应拒绝；当前有风险，见阻断清单 |
 | P1 | 学助和陌生人直接调用创建、列表、导出函数 | 服务端拒绝，不能只看按钮是否隐藏 |
-| P2 | 参数增加 `openid`、`OPENID`、`role`、`isSupervisor` | 不能改变实际身份或工时系数 |
+| P2 | 参数增加 `openid`、`OPENID`、`role`、`isSupervisor`、`department` | 不能改变实际身份、工时系数或部门 |
 | F1 | 老师创建当前月表单，再修改截止时间 | 同一表单被更新，无重复表单 |
 | F2 | 普通学助：值班 30，内部活动 2 次 | 项目 16，总计 46，有效 46 |
 | F3 | 主管填写与 F2 相同数据 | 总计和有效均为 69 |
@@ -89,10 +89,13 @@ npm run test:fixtures
 | F6 | 第二微信打开表单 | 不能看到第一微信的提交 |
 | F7 | 截止时间之前、等于、之后；关闭或已计算 | 核对边界；当前代码使用 `>`，等于截止毫秒时仍允许 |
 | F8 | 跳过前端直接传负数、非数字、非法地点与数量 | 应拒绝且不写入；当前服务端校验不足 |
+| F9 | 名单里把部门写成 `cpro `、`公共关系`、`Public Relations`，以及拼错或留空，再提交 | 前三种都落成规范值（`CPRO` / `Public_Relations`）；拼错或留空为 `''`；导出末列与之一致 |
 | C1 | 已绑定但未提交者，到期执行后台任务两次 | 补零一次，表单 calculated，无重复记录 |
 | C2 | 存在未绑定学助的月结 | 当前会跳过该人；确认是否满足全员导出要求 |
-| E1 | 老师导出 | 下载后用 Excel/WPS 打开；8 列、姓名、工时、答案、中文与文件名正确 |
+| C3 | 检查未提交者的补零行 | 补零行也带部门，与已提交者格式一致（漏改 calculateMonthly 时此列会为空） |
+| E1 | 老师导出 | 下载后用 Excel/WPS 打开；9 列、姓名、工时、答案、末列部门与夹具一致（三个学助分别是 `Administration_and_Data`、`Overseas_social_Media`、`Journalist_News_Center`）、中文与文件名正确 |
 | E2 | 大数据量，多月同日导出 | 所有人齐全；不同月份的文件不能互相覆盖 |
+| E3 | 改动名单部门后导出历史月份 | 历史月份仍是提交时的快照；新增该列之前的历史提交该列为空且不报错 |
 | U1 | 弱网、断网、快速连点提交、重新进入 | 提示可理解，可重试，无错误身份和重复记录 |
 | S1 | 客户端直接访问集合、未授权调用计算函数 | 数据库规则和函数权限拒绝非授权操作 |
 
@@ -112,6 +115,7 @@ npm run test:fixtures
 | 业务确认 | README 为 max(40, 总工时)，是保底 40，不是封顶 40 | 当前不改公式；确认后再改变测试预期 |
 | 业务确认 | 未提交者有效工时为 0，提交零工时者为 40；未绑定者不导出 | 明确是否符合结算规则 |
 | 业务确认 | README 写所有用户可填表，服务端只接受 students 身份 | 明确老师是否应填表，勿用双重绑定绕过 |
+| 业务确认 | 新增部门列后，存量 `students` 记录没有 `department`，新增该列之前的历史 `submissions` 也没有部门快照 | 名单在控制台补录部门；历史月份该列导出为空，如需追溯要单独回填 |
 | 上线前修复 | 同一天的不同导出使用相同存储路径 | 路径加入月份和唯一标识，验证历史下载链接内容 |
 
 每次修改先运行本地回归，再部署测试环境验证相关矩阵；涉及身份、工时公式、截止、导出时完成整个关键流程。记录代码提交号、测试环境 ID、场景、预期、实际、截图/日志和结论，不记录完整真实 OPENID。
@@ -120,6 +124,6 @@ npm run test:fixtures
 
 ## 7. 本次验证记录
 
-本地执行：14 项通过、0 失败、5 项 TODO。覆盖全部 8 个云函数的主要业务路径；生成虚构账户文件成功。未执行真实云部署、真机、数据库规则、真实 Excel、容量与并发测试。
+本地执行：21 项通过、0 失败、5 项 TODO。覆盖全部 8 个云函数的主要业务路径；其中 5 项针对部门字段（三处枚举与别名表一致性、别名归一化、名单落库快照与伪造防护、补零一致性及导出快照、历史提交缺 `department` 字段的兼容）。生成虚构账户文件成功。未执行真实云部署、真机、数据库规则、真实 Excel、容量与并发测试。
 
 参考：[微信官方 SDK 的上下文定义](https://github.com/wechat-miniprogram/wx-server-sdk/blob/master/index.d.ts)、[微信官方云开发初始化示例](https://github.com/wechat-miniprogram/minigame-demo/blob/master/CLOUD_README.md)。

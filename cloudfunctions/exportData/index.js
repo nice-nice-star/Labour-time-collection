@@ -20,8 +20,8 @@ exports.main = async (event) => {
   const subs = await db.collection('submissions')
     .where({ formId }).orderBy('name', 'asc').get()
 
-  // 表头：Name | 有效工时 | Answer1..Answer6（与 README 一致）
-  const header = ['Name', '有效工时', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'Answer6']
+  // 表头：Name | 有效工时 | Answer1..Answer6 | 部门（与 README 一致；部门追加在最后，原有列位置不变）
+  const header = ['Name', '有效工时', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'Answer6', '部门']
   const rows = [header]
 
   subs.data.forEach(s => {
@@ -33,7 +33,9 @@ exports.main = async (event) => {
       s.answers.answer3,
       JSON.stringify(s.projectRows || []),   // 第四题表格数值题，用 JSON 序列化
       s.answers.answer5,
-      s.answers.answer6
+      s.answers.answer6,
+      // 部门：提交时写下的名单快照。新增该列之前的提交没有此字段，导出为空字符串
+      s.department || ''
     ])
   })
 

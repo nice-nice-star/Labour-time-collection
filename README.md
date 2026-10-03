@@ -18,7 +18,32 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 > 学生助理姓名
 > 学生助理ID
 > 是否为主管
+> 所属部门
 在初次登陆时只有姓名和ID完全相同才可以成功对应
+
+### 学助所属部门（受控枚举）
+> 存放位置：`students` 集合的 `department` 字段，跟人走，不随表单或月份变化。
+> 名单里填规范值、中文名或英文显示名都可以：忽略大小写与多余空白，中文名/英文名按别名表归一，统一落成规范值。
+> 其他写法（拼写错误、留空、自造部门名）按空字符串处理，该学助导出的部门列为空，不会静默保留错值。
+> `students` 记录本身保持原样，归一化只发生在落库与导出。
+> 新增或重命名部门：同时修改三处 `DEPARTMENTS` 与 `DEPARTMENT_ALIASES`（`miniprogram/config/constants.js`、`cloudfunctions/submitForm/constants.js`、`cloudfunctions/calculateMonthly/constants.js`）。云函数无法跨目录引用小程序代码，因此保留副本，`npm test` 会校验三处一致。
+> 提交时把当时的部门写进 `submissions` 快照：已截止或已统计的月份，之后改名单不影响导出；但表单仍开放时学助重新提交会覆盖该月快照，此时改名会让同一个月出现新旧两种写法。
+> 存量名单（新增字段之前导入的记录）没有 `department`，需要在云控制台补录；新增该列之前的历史提交也没有部门快照，导出时该列为空。
+> 小程序页面当前不展示、也不按部门筛选；部门只影响导出。
+
+| 规范值（推荐直接填这个） | 中文名 | 英文显示名 |
+| --- | --- | --- |
+| CPRO | — | CPRO |
+| Public_Relations | 公共关系 | Public Relations |
+| Domestic_social_Media | 国内社媒 | Domestic social Media |
+| Multimedia_center | 多媒体中心 | Multimedia center |
+| Journalist_News_Center | 大学新闻中心记者 | Journalist, News Center |
+| Overseas_social_Media | 海外社媒 | Overseas social Media |
+| University_Gift_shop | 纪念品商店 | University Gift shop |
+| Administration_and_Data | 行政与数据 | Administration and Data |
+| Magazine_publisher | 神仙湖畔杂志社 | Magazine publisher（译名暂定） |
+
+中英文两列都会归一到同行的规范值；`University gift shop`（值班地点里的写法）也归一到 `University_Gift_shop`。
 
 ### 其他信息
 > 功能（权限）
@@ -90,7 +115,9 @@ if 学生主管：
 ### 导出要求
 导出产物是 "Year_Month_Day.xlsx"
 导出表格应该如下格式：
-| Name | 有效工时 | Answer1 | Answer2 | Answer3 | Answer4 | Answer5 | Answer6 |
-| ---- | -------- | ------- | ------- | ------- | ------- | ------- | ------- |
-| Stuend1 | -------- | ------- | ------- | ------- | ------- | ------- | ------- |
-| Stuend2 | -------- | ------- | ------- | ------- | ------- | ------- | ------- |
+| Name | 有效工时 | Answer1 | Answer2 | Answer3 | Answer4 | Answer5 | Answer6 | 部门 |
+| ---- | -------- | ------- | ------- | ------- | ------- | ------- | ------- | ---- |
+| Stuend1 | -------- | ------- | ------- | ------- | ------- | ------- | ------- | CPRO |
+| Stuend2 | -------- | ------- | ------- | ------- | ------- | ------- | ------- | CPRO |
+
+`部门` 追加在最后一列，原有 8 列位置不变，取提交时（未提交者为月结补零时）的名单快照。

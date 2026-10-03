@@ -1,6 +1,7 @@
 // 本文件是 miniprogram/config/constants.js 的副本。
 // 云函数无法跨目录 require 小程序代码，因此这里保留同一份数据。
-// 两处必须保持一致；tests/workflow.test.js 会校验费率表的键完全一致。
+// 费率表/标签表与小程序必须一致；部门枚举还要与 cloudfunctions/calculateMonthly/constants.js 一致。
+// 三处（小程序、本文件、calculateMonthly）的漂移由 tests/workflow.test.js 校验。
 //
 // 产出项目的稳定键。费率以 key 为准；中文名只是显示文本，
 // 同时作为历史数据（早期提交里存的是中文名）的兼容入口。
@@ -107,6 +108,46 @@ function normalizeProjectRows(rows) {
 // 第三题（值班地点）选项
 const LOCATION_OPTIONS = ['University gift shop', 'ABE303', 'ABW709']
 
+// 学助所属部门（受控枚举）：名单里 students 集合的 department 字段只能取这里的值。
+// 归一化规则：忽略大小写与多余空白；中文名/英文显示名按 DEPARTMENT_ALIASES 归一；
+// 枚举与别名都匹配不上（含留空、写错部门名）按空字符串处理。
+const DEPARTMENTS = ['CPRO', 'Public_Relations','Domestic_social_Media','Multimedia_center','Journalist_News_Center','Overseas_social_Media','University_Gift_shop','Administration_and_Data','Magazine_publisher']
+
+// 别名表：README 里列出的中文名与带空格英文显示名 → 规范值。键统一小写。
+const DEPARTMENT_ALIASES = {
+  '公共关系': 'Public_Relations',
+  '国内社媒': 'Domestic_social_Media',
+  '多媒体中心': 'Multimedia_center',
+  '大学新闻中心记者': 'Journalist_News_Center',
+  '海外社媒': 'Overseas_social_Media',
+  '纪念品商店': 'University_Gift_shop',
+  '行政与数据': 'Administration_and_Data',
+  '神仙湖畔杂志社': 'Magazine_publisher',
+  'public relations': 'Public_Relations',
+  'domestic social media': 'Domestic_social_Media',
+  'multimedia center': 'Multimedia_center',
+  'journalist, news center': 'Journalist_News_Center',
+  'overseas social media': 'Overseas_social_Media',
+  'university gift shop': 'University_Gift_shop',
+  'administration and data': 'Administration_and_Data',
+  'magazine publisher': 'Magazine_publisher'
+}
+
+/**
+ * 把名单里的部门归一化成规范枚举值（先精确匹配枚举，再查别名表）
+ * @param {string} value
+ * @returns {string} 枚举与别名都匹配不上时返回 ''
+ */
+function resolveDepartment(value) {
+  const raw = String(value == null ? '' : value).replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  const key = raw.toLowerCase()
+  const hit = DEPARTMENTS.find(d => d.toLowerCase() === key)
+  if (hit) return hit
+  // 用 hasOwnProperty 取值：名单里写 'constructor' 之类的键不能命中原型链
+  return Object.prototype.hasOwnProperty.call(DEPARTMENT_ALIASES, key) ? DEPARTMENT_ALIASES[key] : ''
+}
+
 // 角色
 const ROLES = { EXPORT: 'export', STUDENT: 'student', UNBOUND: 'unbound' }
 
@@ -120,5 +161,8 @@ module.exports = {
   labelOf,
   normalizeProjectRows,
   LOCATION_OPTIONS,
+  DEPARTMENTS,
+  DEPARTMENT_ALIASES,
+  resolveDepartment,
   ROLES
 }

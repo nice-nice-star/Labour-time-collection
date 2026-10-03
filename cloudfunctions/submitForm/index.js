@@ -3,7 +3,8 @@ const cloud = require('wx-server-sdk')
 const {
   PROJECT_HOURS,
   normalizeProjectRows,
-  LOCATION_OPTIONS
+  LOCATION_OPTIONS,
+  resolveDepartment
 } = require('./constants')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -68,6 +69,8 @@ exports.main = async (event) => {
     studentId: stu.studentId,
     name: stu.name,
     isSupervisor: !!stu.isSupervisor,
+    // 部门取自名单，不接受前端传值；落库是快照，之后调整名单不影响历史月份
+    department: resolveDepartment(stu.department),
     answers,
     projectRows: rows,
     calc: calcResult,

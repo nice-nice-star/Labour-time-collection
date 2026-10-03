@@ -1,5 +1,6 @@
 // cloudfunctions/calculateMonthly/index.js
 const cloud = require('wx-server-sdk')
+const { resolveDepartment } = require('./constants')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
@@ -38,6 +39,8 @@ exports.main = async (event = {}) => {
           data: {
             formId: f._id, month: f.month, openid: s.openid,
             studentId: s.studentId, name: s.name, isSupervisor: !!s.isSupervisor,
+            // 补零记录同样写部门，否则未提交者的部门列会与已提交者不一致
+            department: resolveDepartment(s.department),
             answers: { answer1: '0', answer2: '', answer3: '', answer4: '', answer5: '', answer6: '' },
             projectRows: [], calc: { dutyHours: 0, projectHours: 0, totalHours: 0, effectiveHours: 0 },
             createTime: db.serverDate(), updateTime: db.serverDate()
