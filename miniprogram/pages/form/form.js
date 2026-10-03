@@ -1,5 +1,5 @@
 // miniprogram/pages/form/form.js
-const { PROJECT_ROWS, LOCATION_OPTIONS } = require('../../config/constants')
+const { PROJECT_ROWS, LOCATION_OPTIONS, resolveProjectKey, normalizeProjectRows } = require('../../config/constants')
 const { calcHours } = require('../../utils/calc')
 
 Page({
@@ -42,8 +42,10 @@ Page({
       shiftTime: s.answers.answer2 || '',
       locationIndex: LOCATION_OPTIONS.indexOf(s.answers.answer3),
       projectRows: PROJECT_ROWS.map(pr => {
-        const row = (s.projectRows || []).find(x => x.item === pr.item)
-        return { ...pr, count: row ? row.count : 0 }
+        // 历史提交里存的是中文名，新提交存的是稳定键，两者都要能回填
+        const saved = (s.projectRows || []).find(x => resolveProjectKey(x && (x.key || x.item)) === pr.key)
+        const count = saved ? Math.max(0, Math.floor(Number(saved.count) || 0)) : 0
+        return { ...pr, count }
       }),
       projectName: s.answers.answer5 || '',
       appeal: s.answers.answer6 || ''
@@ -82,7 +84,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'submitForm',
-        data: { dutyHours, shiftTime, locationIndex, projectRows, projectName, appeal }
+        data: { dutyHours, shiftTime, locationIndex, projectRows: normalizeProjectRows(projectRows), projectName, appeal }
       })
       const r = res.result
       if (!r.ok) return wx.showToast({ title: r.msg, icon: 'none' })

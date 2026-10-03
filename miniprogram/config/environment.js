@@ -1,7 +1,7 @@
 // 开发版、体验版必须连接独立测试环境；填入实际环境 ID 后才能联调。
 const environments = {
-  production: 'cloud1-d4g33db5k71c0eba5',
-  test: ''
+  production: '',
+  test: 'cloud1-d4g33db5k71c0eba5'
 }
 
 function resolveCloudEnv(version, config = environments) {

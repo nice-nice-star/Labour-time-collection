@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHarness } = require('./helpers/cloud-harness')
 const { calcHours } = require('../miniprogram/utils/calc')
-const { PROJECT_HOURS } = require('../miniprogram/config/constants')
+const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, resolveProjectKey, labelOf, normalizeProjectRows } = require('../miniprogram/config/constants')
 const { resolveCloudEnv } = require('../miniprogram/config/environment')
 
 function fixture() {
@@ -17,7 +17,7 @@ function fixture() {
   }
 }
 const answer = { dutyHours: 30, shiftTime: '周一上午', locationIndex: 1,
-  projectRows: [{ item: '组织一次内部活动', count: 2 }], projectName: '测试项目', appeal: '' }
+  projectRows: [{ key: 'internal_event', count: 2 }], projectName: '测试项目', appeal: '' }
 
 test('开发/体验/正式版本选择环境；缺失、同环境、未知版本拒绝连接', () => {
   const config = { production: 'prod', test: 'test' }
@@ -28,6 +28,47 @@ test('开发/体验/正式版本选择环境；缺失、同环境、未知版本
     assert.throws(() => resolveCloudEnv(version, { production: 'prod', test: 'prod' }))
   }
   assert.throws(() => resolveCloudEnv(undefined, config))
+})
+
+test('前端与云端的费率表、标签表完全一致（防止键值分离后两处漂移）', () => {
+  const cloudConstants = require('../cloudfunctions/submitForm/constants')
+  // 费率按稳定键对齐，比较原值以区分 null 与 0
+  assert.deepEqual(
+    Object.keys(PROJECT_HOURS).sort(),
+    Object.keys(cloudConstants.PROJECT_HOURS).sort()
+  )
+  for (const key of Object.keys(PROJECT_HOURS)) {
+    assert.deepEqual(PROJECT_HOURS[key], cloudConstants.PROJECT_HOURS[key], `费率不一致: ${key}`)
+  }
+  // 标签表与键值转换必须同步
+  assert.deepEqual(PROJECT_LABELS, cloudConstants.PROJECT_LABELS)
+  assert.equal(Object.keys(PROJECT_LABELS).length, 13)
+})
+
+test('稳定键与中文显示文本可双向解析；归一化剔除未知项目、数量取非负整数', () => {
+  // 新键可解析
+  assert.equal(resolveProjectKey(PROJECT_KEYS.INTERNAL_EVENT), PROJECT_KEYS.INTERNAL_EVENT)
+  assert.equal(labelOf(PROJECT_KEYS.INTERNAL_EVENT), '组织一次内部活动')
+  // 历史中文名仍可解析（兼容老数据）
+  assert.equal(resolveProjectKey('组织一次内部活动'), PROJECT_KEYS.INTERNAL_EVENT)
+  assert.equal(resolveProjectKey('不存在的项目'), null)
+  assert.equal(resolveProjectKey(undefined), null)
+
+  assert.deepEqual(normalizeProjectRows([{ key: 'internal_event', count: 2 }]), [
+    { key: 'internal_event', label: '组织一次内部活动', count: 2 }
+  ])
+  // 历史格式与小数/负数数量
+  assert.deepEqual(normalizeProjectRows([{ item: '组织一次内部活动', count: 1.7 }]), [
+    { key: 'internal_event', label: '组织一次内部活动', count: 1 }
+  ])
+  assert.deepEqual(normalizeProjectRows([{ key: 'poster', count: -5 }]), [
+    { key: 'poster', label: '海报设计', count: 0 }
+  ])
+  assert.deepEqual(normalizeProjectRows([{ key: 'unknown_item', count: 2 }]), [])
+  assert.deepEqual(normalizeProjectRows(null), [])
+  // 幂等：已归一化的结果再归一化不变
+  const once = normalizeProjectRows([{ key: 'poster', count: 3 }])
+  assert.deepEqual(normalizeProjectRows(once), once)
 })
 
 test('登录识别四种身份，事件参数不能伪造微信身份', async () => {
@@ -100,11 +141,19 @@ test('提交并修改；用户身份和主管系数取数据库；他人无法�
 test('所有项目费率、待定项目、主管倍率和 40 小时下限与前端一致', async () => {
   for (const isSupervisor of [false, true]) {
     const h = createHarness(fixture())
-    for (const item of Object.keys(PROJECT_HOURS)) {
-      const rows = [{ item, count: 3 }]
+    for (const key of Object.keys(PROJECT_HOURS)) {
+      const rows = [{ key, count: 3 }]
       const result = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: rows })
       assert.deepEqual(result.calc, calcHours(32, rows, isSupervisor))
     }
+    // 历史数据的兼容点：数据库里存的中文名提交必须算出同样的结果
+    const legacyRows = [{ item: '组织一次内部活动', count: 3 }]
+    const legacy = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: legacyRows })
+    const keyed = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: [{ key: 'internal_event', count: 3 }] })
+    assert.deepEqual(legacy.calc, keyed.calc)
+    assert.deepEqual(legacy.calc, calcHours(32, [{ key: 'internal_event', count: 3 }], isSupervisor))
+    assert.equal(legacy.calc.totalHours, isSupervisor ? 84 : 56)
+
     const zero = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 0, projectRows: [] })
     assert.equal(zero.calc.effectiveHours, 40)
   }

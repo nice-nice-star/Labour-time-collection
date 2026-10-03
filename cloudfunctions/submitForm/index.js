@@ -1,23 +1,22 @@
 // cloudfunctions/submitForm/index.js
 const cloud = require('wx-server-sdk')
+const {
+  PROJECT_HOURS,
+  normalizeProjectRows,
+  LOCATION_OPTIONS
+} = require('./constants')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-// 项目工时表（与前端 constants.js 保持一致；视频剪辑为"待定"，用 null）
-const PROJECT_HOURS = {
-  '深度访谈前期准备': 2, '参与深度访谈': 1, '访谈成稿': 3,
-  '排版制作一条完整的视频': 3, '制作一条短视频 (1-5)mins': 4,
-  '制作一条长视频 ~10mins': 8, '视频剪辑': null, '小红书编辑一条': 3,
-  '撰写一条海外社媒稿件': 1, '参与一场活动摄影': 2, '海报设计': 2,
-  '新闻监测': 2, '组织一次内部活动': 8
-}
-const LOCATIONS = ['University gift shop', 'ABE303', 'ABW709']
+// 费率表以稳定键为键；落库与导出仍写中文名，与历史数据保持一致
+const RATES = PROJECT_HOURS
+const LOCATIONS = LOCATION_OPTIONS
 
 function calc(answers, projectRows, isSupervisor) {
   const duty = Number(answers.answer1) || 0
   let project = 0
   projectRows.forEach(r => {
-    const rate = PROJECT_HOURS[r.item]
+    const rate = RATES[r.key]
     if (rate == null) return
     project += rate * (Number(r.count) || 0)
   })
@@ -58,7 +57,9 @@ exports.main = async (event) => {
     answer5: String(projectName || '').trim(),
     answer6: String(appeal || '').trim()
   }
-  const calcResult = calc(answers, projectRows || [], !!stu.isSupervisor)
+  // 归一化为 { key, label, count }，落库保留 label 以兼容导出与历史数据
+  const rows = normalizeProjectRows(projectRows)
+  const calcResult = calc(answers, rows, !!stu.isSupervisor)
 
   const data = {
     formId: form._id,
@@ -68,7 +69,7 @@ exports.main = async (event) => {
     name: stu.name,
     isSupervisor: !!stu.isSupervisor,
     answers,
-    projectRows: projectRows || [],
+    projectRows: rows,
     calc: calcResult,
     updateTime: db.serverDate()
   }

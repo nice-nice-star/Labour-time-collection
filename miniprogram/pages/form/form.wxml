@@ -16,7 +16,7 @@
     <view class="card">
       <view class="section-heading"><view><text class="section-index">02</text><text class="section-title">项目产出</text></view><text class="helper">填写完成数量</text></view>
       <view class="table-heading"><text>产出项目 / 折算标准</text><text>数量</text></view>
-      <view class="project-row" wx:for="{{projectRows}}" wx:key="item"><view class="project-info"><text class="project-title">{{item.item}}</text><text class="project-rate">{{item.hours === '待定' ? '工时待定 · 暂不计入' : item.hours + ' 小时 / 个'}}</text></view><input class="count-input" type="number" maxlength="6" value="{{item.count}}" data-idx="{{index}}" bindinput="onCount" disabled="{{closed || submitting}}" aria-label="{{item.item + '产出数量'}}" /></view>
+      <view class="project-row" wx:for="{{projectRows}}" wx:key="key"><view class="project-info"><text class="project-title">{{item.label}}</text><text class="project-rate">{{item.hours === '待定' ? '工时待定 · 暂不计入' : item.hours + ' 小时 / 个'}}</text></view><input class="count-input" type="number" maxlength="6" value="{{item.count}}" data-idx="{{index}}" bindinput="onCount" disabled="{{closed || submitting}}" aria-label="{{item.label + '产出数量'}}" /></view>
     </view>
     <view class="card">
       <view class="section-heading"><view><text class="section-index">03</text><text class="section-title">补充说明</text></view></view>

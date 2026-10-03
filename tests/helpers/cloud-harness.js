@@ -69,6 +69,10 @@ function createHarness(seed = {}, now = '2026-10-15T04:00:00Z') {
       require(moduleName) {
         if (moduleName === 'wx-server-sdk') return cloud
         if (moduleName === 'node-xlsx') return { build: sheets => Buffer.from(JSON.stringify(sheets)) }
+        // 云函数目录内的相对依赖（如 submitForm/constants.js）按真实路径解析
+        if (moduleName.startsWith('.')) {
+          return require(path.resolve(path.dirname(filename), moduleName))
+        }
         throw new Error(`Unexpected dependency: ${moduleName}`)
       }
     }

@@ -3,7 +3,7 @@ const { PROJECT_HOURS } = require('../config/constants')
 /**
  * 工时计算（与云端保持一致）
  * @param {number} dutyHours 值班总工时
- * @param {Array<{item:string,count:number}>} projectRows 项目工时统计
+ * @param {Array<{key:string,count:number}>} projectRows 项目工时统计（按稳定键）
  * @param {boolean} isSupervisor 是否主管
  * @returns {{dutyHours:number, projectHours:number, totalHours:number, effectiveHours:number}}
  */
@@ -11,7 +11,7 @@ function calcHours(dutyHours, projectRows, isSupervisor) {
   const duty = Number(dutyHours) || 0
   let project = 0
   ;(projectRows || []).forEach(r => {
-    const rate = PROJECT_HOURS[r.item]
+    const rate = PROJECT_HOURS[r.key]     // 费率表键为稳定键
     if (rate == null) return            // 待定项目不计入
     project += rate * (Number(r.count) || 0)
   })

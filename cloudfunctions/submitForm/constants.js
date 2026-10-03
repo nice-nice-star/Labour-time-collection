@@ -1,3 +1,7 @@
+// 本文件是 miniprogram/config/constants.js 的副本。
+// 云函数无法跨目录 require 小程序代码，因此这里保留同一份数据。
+// 两处必须保持一致；tests/workflow.test.js 会校验费率表的键完全一致。
+//
 // 产出项目的稳定键。费率以 key 为准；中文名只是显示文本，
 // 同时作为历史数据（早期提交里存的是中文名）的兼容入口。
 const PROJECT_KEYS = {
