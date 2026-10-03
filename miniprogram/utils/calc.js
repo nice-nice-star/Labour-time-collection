@@ -17,7 +17,7 @@ function calcHours(dutyHours, projectRows, isSupervisor) {
   })
   let total = duty + project
   if (isSupervisor) total = total * 1.5 // 学生主管 ×1.5
-  const effective = Math.max(40, total) // 有效工时 = max(40, 总工时)
+  const effective = Math.min(40, total) // 有效工时最多为 40 小时；主管倍率先于封顶计算
   return { dutyHours: duty, projectHours: project, totalHours: total, effectiveHours: effective }
 }
 

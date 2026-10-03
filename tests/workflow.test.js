@@ -183,7 +183,7 @@ test('提交并修改；用户身份和主管系数取数据库；他人无法�
   const h = createHarness(fixture())
   const first = await h.call('submitForm', 'wx-a', { ...answer, openid: 'wx-b', isSupervisor: true, name: '伪造' })
   assert.equal(first.calc.totalHours, 46)
-  assert.equal(first.calc.effectiveHours, 46)
+  assert.equal(first.calc.effectiveHours, 40)
   assert.equal(h.tables.submissions[0].name, '学助甲')
   assert.equal((await h.call('getForm', 'wx-b')).submission, null)
   assert.equal((await h.call('getForm', 'wx-a')).submission.answers.answer1, '30')
@@ -193,7 +193,7 @@ test('提交并修改；用户身份和主管系数取数据库；他人无法�
   assert.equal((await h.call('listForms', 'wx-teacher')).forms[0].count, 1)
 })
 
-test('所有项目费率、待定项目、主管倍率和 40 小时下限与前端一致', async () => {
+test('所有项目费率、待定项目、主管倍率和 40 小时上限与前端一致', async () => {
   for (const isSupervisor of [false, true]) {
     const h = createHarness(fixture())
     for (const key of Object.keys(PROJECT_HOURS)) {
@@ -210,7 +210,35 @@ test('所有项目费率、待定项目、主管倍率和 40 小时下限与前�
     assert.equal(legacy.calc.totalHours, isSupervisor ? 84 : 56)
 
     const zero = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 0, projectRows: [] })
-    assert.equal(zero.calc.effectiveHours, 40)
+    assert.equal(zero.calc.effectiveHours, 0)
+  }
+})
+
+test('有效工时最高 40 小时；前端预估与云端存储先算主管倍率再封顶', async () => {
+  const cases = [
+    { duty: 0, supervisor: false, total: 0, effective: 0 },
+    { duty: 30, supervisor: false, total: 30, effective: 30 },
+    { duty: 39, supervisor: false, total: 39, effective: 39 },
+    { duty: 40, supervisor: false, total: 40, effective: 40 },
+    { duty: 41, supervisor: false, total: 41, effective: 40 },
+    { duty: 50, supervisor: false, total: 50, effective: 40 },
+    { duty: 0, supervisor: true, total: 0, effective: 0 },
+    { duty: 20, supervisor: true, total: 30, effective: 30 },
+    { duty: 26, supervisor: true, total: 39, effective: 39 },
+    { duty: 27, supervisor: true, total: 40.5, effective: 40 },
+    { duty: 30, supervisor: true, total: 45, effective: 40 },
+    { duty: 50, supervisor: true, total: 75, effective: 40 },
+    { duty: 10, rows: [{ key: 'internal_event', count: 2 }], supervisor: true, total: 39, effective: 39 },
+    { duty: 11, rows: [{ key: 'internal_event', count: 2 }], supervisor: true, total: 40.5, effective: 40 }
+  ]
+  for (const { duty, rows = [], supervisor, total, effective } of cases) {
+    const expected = { dutyHours: duty, projectHours: rows.length ? 16 : 0, totalHours: total, effectiveHours: effective }
+    assert.deepEqual(calcHours(duty, rows, supervisor), expected)
+    const h = createHarness(fixture())
+    const result = await h.call('submitForm', supervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: duty, projectRows: rows })
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.calc, expected)
+    assert.deepEqual(h.tables.submissions[0].calc, expected)
   }
 })
 
@@ -234,7 +262,8 @@ test('无表单、已关闭、已计算、超过截止时间均拒绝提交', as
 test('完整工作流：提交、到期关闭、未提交补零、重复计算、导出数据', async () => {
   const h = createHarness(fixture())
   await h.call('submitForm', 'wx-b', answer)
-  assert.equal(h.tables.submissions[0].calc.effectiveHours, 69)
+  assert.equal(h.tables.submissions[0].calc.totalHours, 69)
+  assert.equal(h.tables.submissions[0].calc.effectiveHours, 40)
   h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
   const result = await h.call('calculateMonthly', undefined)
   assert.deepEqual(result.calculated, ['2026-10'])
@@ -253,6 +282,8 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   // 部门列：已提交者取提交时快照，未提交者取补零时的名单值
   assert.equal(sheets[0].data.find(row => row[0] === '学助甲').at(-1), 'CPRO')
   assert.equal(sheets[0].data.find(row => row[0] === '主管乙').at(-1), 'CPRO')
+  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[1], 40)
+  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[1], 0)
 })
 
 test('部门：按名单落库快照，枚举外与缺失写空字符串，事件参数无法伪造', async () => {

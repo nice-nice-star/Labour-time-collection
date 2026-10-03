@@ -23,7 +23,7 @@ function calc(answers, projectRows, isSupervisor) {
   })
   let total = duty + project
   if (isSupervisor) total = total * 1.5
-  const effective = Math.max(40, total)
+  const effective = Math.min(40, total) // 先应用主管倍率，再按 40 小时封顶
   return { dutyHours: duty, projectHours: project, totalHours: total, effectiveHours: effective }
 }
 
