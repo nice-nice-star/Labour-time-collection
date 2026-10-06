@@ -8,7 +8,7 @@ Page({
     closed: false, loading: true, loadError: '', hasSubmission: false,
     dutyHours: '', shiftTime: '', locationIndex: -1,
     locationOptions: LOCATION_OPTIONS,
-    projectRows: PROJECT_ROWS.map(r => ({ ...r, count: 0 })),
+    projectRows: PROJECT_ROWS.map(r => ({ ...r, counts: { participant: 0, coordinator: 0 } })),
     projectName: '', appeal: '',
     preview: { totalHours: 0, effectiveHours: 0 },
     submitting: false
@@ -42,10 +42,10 @@ Page({
       shiftTime: s.answers.answer2 || '',
       locationIndex: LOCATION_OPTIONS.indexOf(s.answers.answer3),
       projectRows: PROJECT_ROWS.map(pr => {
-        // 历史提交里存的是中文名，新提交存的是稳定键，两者都要能回填
         const saved = (s.projectRows || []).find(x => resolveProjectKey(x && (x.key || x.item)) === pr.key)
-        const count = saved ? Math.max(0, Math.floor(Number(saved.count) || 0)) : 0
-        return { ...pr, count }
+        const counts = (saved && saved.counts) || {}
+        const count = (value) => Math.max(0, Math.floor(Number(value) || 0))
+        return { ...pr, counts: { participant: count(counts.participant), coordinator: count(counts.coordinator) } }
       }),
       projectName: s.answers.answer5 || '',
       appeal: s.answers.answer6 || ''
@@ -58,8 +58,8 @@ Page({
   onLocation(e) { this.setData({ locationIndex: Number(e.detail.value) }) },
 
   onCount(e) {
-    const idx = e.currentTarget.dataset.idx
-    this.setData({ [`projectRows[${idx}].count`]: Math.max(0, Math.floor(Number(e.detail.value) || 0)) })
+    const { idx, role } = e.currentTarget.dataset
+    this.setData({ [`projectRows[${idx}].counts.${role}`]: Math.max(0, Math.floor(Number(e.detail.value) || 0)) })
     this.recalc()
   },
 

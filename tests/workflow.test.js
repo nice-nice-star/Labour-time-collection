@@ -2,8 +2,32 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHarness } = require('./helpers/cloud-harness')
 const { calcHours } = require('../miniprogram/utils/calc')
-const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, resolveProjectKey, labelOf, normalizeProjectRows, DEPARTMENTS, DEPARTMENT_ALIASES, resolveDepartment } = require('../miniprogram/config/constants')
+const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, PROJECT_LABELS_EN, PROJECT_ROWS, resolveProjectKey, labelOf, rateOf, hasCoordinatorRate, normalizeProjectRows, DEPARTMENTS, DEPARTMENT_ALIASES, resolveDepartment } = require('../miniprogram/config/constants')
 const { resolveCloudEnv } = require('../miniprogram/config/environment')
+
+// WXS 不是 CommonJS 模块，用 vm 执行并取其导出，用于校验模板侧费率表不漂移
+function loadFormWxs() {
+  const vm = require('node:vm')
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const filename = path.resolve(__dirname, '../miniprogram/pages/form/rates.wxs')
+  const context = { module: { exports: {} } }
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), context, { filename })
+  const wxs = context.module.exports
+  // HOURS 没有导出，从行为上还原整张表
+  return {
+    rate: wxs.rate,
+    hasCoordinator: wxs.hasCoordinator,
+    isPending: wxs.isPending,
+    rateText: wxs.rateText,
+    hours: () => Object.fromEntries(
+      Object.keys(PROJECT_HOURS).map(key => [key, {
+        participant: wxs.rate(key, 'participant'),
+        coordinator: wxs.rate(key, 'coordinator')
+      }])
+    )
+  }
+}
 
 function fixture() {
   return {
@@ -18,7 +42,7 @@ function fixture() {
   }
 }
 const answer = { dutyHours: 30, shiftTime: '周一上午', locationIndex: 1,
-  projectRows: [{ key: 'internal_event', count: 2 }], projectName: '测试项目', appeal: '' }
+  projectRows: [{ key: 'team_activity', counts: { participant: 2, coordinator: 0 } }], projectName: '测试项目', appeal: '' }
 
 test('开发/体验/正式版本选择环境；缺失、同环境、未知版本拒绝连接', () => {
   const config = { production: 'prod', test: 'test' }
@@ -43,7 +67,97 @@ test('前端与云端的费率表、标签表完全一致（防止键值分离�
   }
   // 标签表与键值转换必须同步
   assert.deepEqual(PROJECT_LABELS, cloudConstants.PROJECT_LABELS)
-  assert.equal(Object.keys(PROJECT_LABELS).length, 13)
+  assert.equal(Object.keys(PROJECT_LABELS).length, 14)
+})
+
+test('表单 WXS 的费率表与 constants.js 完全一致（WXML 只能通过 WXS 取费率）', () => {
+  const wxs = loadFormWxs()
+  assert.equal(typeof wxs.rate, 'function')
+  assert.deepEqual(wxs.hours(), PROJECT_HOURS)
+  for (const key of Object.keys(PROJECT_HOURS)) {
+    for (const role of ['participant', 'coordinator']) {
+      assert.deepEqual(wxs.rate(key, role), rateOf(key, role), `WXS 费率不一致: ${key}/${role}`)
+    }
+    assert.equal(wxs.hasCoordinator(key), hasCoordinatorRate(key), `WXS 统筹开关不一致: ${key}`)
+    // 展示文案：待定 / 仅参与 / 两种都有
+    const r = PROJECT_HOURS[key]
+    const expectedText = (r.participant === null && r.coordinator === null)
+      ? '按实际 · 暂不计入'
+      : (r.coordinator === null
+        ? '仅参与 ' + r.participant + ' 小时 / 个'
+        : '统筹 ' + r.coordinator + ' h/个 · 参与 ' + r.participant + ' h/个')
+    assert.equal(wxs.rateText(key), expectedText, `WXS 文案不一致: ${key}`)
+  }
+  assert.equal(wxs.rate('unknown_key', 'participant'), null)
+  assert.equal(wxs.rateText('unknown_key'), '按实际 · 暂不计入')
+})
+
+test('费率结构：参与/统筹两端、单值项目不开放统筹、按实际项目不计入', () => {
+  const keys = Object.keys(PROJECT_HOURS)
+  // 键集合与项目行模板完全一致
+  assert.deepEqual(Object.keys(PROJECT_LABELS).sort(), keys.slice().sort())
+  assert.deepEqual(PROJECT_ROWS.map(r => r.key).slice().sort(), keys.slice().sort())
+  for (const key of keys) {
+    const hours = PROJECT_HOURS[key]
+    assert.deepEqual(Object.keys(hours).sort(), ['coordinator', 'participant'], `费率结构不对: ${key}`)
+    for (const role of ['participant', 'coordinator']) {
+      const rate = hours[role]
+      // null 表示不计入；否则必须是正数
+      if (rate !== null) {
+        assert.equal(typeof rate, 'number', `费率不是数字: ${key}/${role}`)
+        assert.ok(rate > 0, `费率应大于 0: ${key}/${role}`)
+        assert.ok(Number.isFinite(rate), `费率应为有限数: ${key}/${role}`)
+      }
+    }
+    // 统筹不应低于参与（区间上限 ≥ 下限）
+    if (hours.coordinator !== null) {
+      assert.ok(hours.coordinator >= hours.participant, `统筹低于参与: ${key}`)
+    }
+    // 展示文本：rateOf 与 hasCoordinatorRate 必须与费率表一致
+    assert.deepEqual(rateOf(key, 'participant'), hours.participant)
+    assert.deepEqual(rateOf(key, 'coordinator'), hours.coordinator)
+    assert.equal(hasCoordinatorRate(key), hours.coordinator !== null)
+  }
+  // 单值项目（README 里只有一个标准工时）只开放参与
+  for (const key of ['news_article', 'social_post_copy', 'short_video_1min', 'event_coverage', 'data_report']) {
+    assert.equal(hasCoordinatorRate(key), false, `单值项目不应开放统筹: ${key}`)
+    assert.ok(rateOf(key, 'participant') > 0, `单值项目应有参与费率: ${key}`)
+  }
+  // 「按实际」项目两端都是 null，暂不计入
+  for (const key of ['reception', 'management_project']) {
+    assert.equal(rateOf(key, 'participant'), null, `按实际项目不应有费率: ${key}`)
+    assert.equal(rateOf(key, 'coordinator'), null, `按实际项目不应有费率: ${key}`)
+  }
+  // README 的区间与代码两端必须对上
+  assert.equal(rateOf('feature_interview', 'participant'), 3)
+  assert.equal(rateOf('feature_interview', 'coordinator'), 6)
+  assert.equal(rateOf('in_depth_report', 'participant'), 4)
+  assert.equal(rateOf('in_depth_report', 'coordinator'), 8)
+  assert.equal(rateOf('team_activity', 'participant'), 2)
+  assert.equal(rateOf('team_activity', 'coordinator'), 8)
+})
+
+test('每个项目都有英文名，且不为空、不重复、与中文名一一对应', () => {
+  const keys = Object.keys(PROJECT_HOURS)
+  // 与费率表、中文标签表的键完全一致
+  assert.deepEqual(Object.keys(PROJECT_LABELS_EN).sort(), keys.slice().sort())
+  const seen = new Set()
+  for (const key of keys) {
+    const en = PROJECT_LABELS_EN[key]
+    assert.equal(typeof en, 'string', `英文名不是字符串: ${key}`)
+    assert.ok(en.trim().length > 0, `英文名为空: ${key}`)
+    assert.equal(en, en.trim(), `英文名首尾有空白: ${key}`)
+    assert.ok(!seen.has(en), `英文名重复: ${en}`)
+    seen.add(en)
+    // 目前英文名只作数据备用，不应顶替中文显示文本
+    assert.notEqual(PROJECT_LABELS[key], en, `英文名覆盖了中文显示文本: ${key}`)
+  }
+  // 与云函数侧副本保持一致
+  const cloudConstants = require('../cloudfunctions/submitForm/constants')
+  assert.deepEqual(
+    PROJECT_LABELS_EN,
+    cloudConstants.PROJECT_ROWS.reduce((acc, row) => { acc[row.key] = row.labelEn; return acc }, {})
+  )
 })
 
 test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly 三处完全一致', () => {
@@ -100,29 +214,37 @@ test('部门别名：中文名与带空格英文都归一到规范值，覆盖�
   assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').department, 'Domestic_social_Media')
 })
 
-test('稳定键与中文显示文本可双向解析；归一化剔除未知项目、数量取非负整数', () => {
-  // 新键可解析
-  assert.equal(resolveProjectKey(PROJECT_KEYS.INTERNAL_EVENT), PROJECT_KEYS.INTERNAL_EVENT)
-  assert.equal(labelOf(PROJECT_KEYS.INTERNAL_EVENT), '组织一次内部活动')
-  // 历史中文名仍可解析（兼容老数据）
-  assert.equal(resolveProjectKey('组织一次内部活动'), PROJECT_KEYS.INTERNAL_EVENT)
+test('稳定键与中文显示文本可双向解析；归一化按参与/统筹取非负整数', () => {
+  // 稳定键可解析
+  assert.equal(resolveProjectKey(PROJECT_KEYS.TEAM_ACTIVITY), PROJECT_KEYS.TEAM_ACTIVITY)
+  assert.equal(labelOf(PROJECT_KEYS.TEAM_ACTIVITY), '集体活动')
+  // 中文名也可解析（表单与导出都按中文名落库）
+  assert.equal(resolveProjectKey('集体活动'), PROJECT_KEYS.TEAM_ACTIVITY)
   assert.equal(resolveProjectKey('不存在的项目'), null)
   assert.equal(resolveProjectKey(undefined), null)
 
-  assert.deepEqual(normalizeProjectRows([{ key: 'internal_event', count: 2 }]), [
-    { key: 'internal_event', label: '组织一次内部活动', count: 2 }
+  const row = (key, participant, coordinator) => ({
+    key, label: labelOf(key), counts: { participant, coordinator }
+  })
+
+  // 两个角色都开放的项目：分别计数
+  assert.deepEqual(normalizeProjectRows([{ key: 'team_activity', counts: { participant: 2, coordinator: 1 } }]), [
+    row('team_activity', 2, 1)
   ])
-  // 历史格式与小数/负数数量
-  assert.deepEqual(normalizeProjectRows([{ item: '组织一次内部活动', count: 1.7 }]), [
-    { key: 'internal_event', label: '组织一次内部活动', count: 1 }
+  // 只开放参与的项目：统筹数量被清零，不落库
+  assert.deepEqual(normalizeProjectRows([{ key: 'data_report', counts: { participant: 3, coordinator: 5 } }]), [
+    row('data_report', 3, 0)
   ])
-  assert.deepEqual(normalizeProjectRows([{ key: 'poster', count: -5 }]), [
-    { key: 'poster', label: '海报设计', count: 0 }
+  // 缺失 counts 按 0 处理
+  assert.deepEqual(normalizeProjectRows([{ key: 'poster', counts: {} }]), [row('poster', 0, 0)])
+  // 小数与负数：取整并夹到 0
+  assert.deepEqual(normalizeProjectRows([{ key: 'poster', counts: { participant: 1.7, coordinator: -5 } }]), [
+    row('poster', 1, 0)
   ])
-  assert.deepEqual(normalizeProjectRows([{ key: 'unknown_item', count: 2 }]), [])
+  assert.deepEqual(normalizeProjectRows([{ key: 'unknown_item', counts: { participant: 2 } }]), [])
   assert.deepEqual(normalizeProjectRows(null), [])
   // 幂等：已归一化的结果再归一化不变
-  const once = normalizeProjectRows([{ key: 'poster', count: 3 }])
+  const once = normalizeProjectRows([{ key: 'poster', counts: { participant: 3, coordinator: 2 } }])
   assert.deepEqual(normalizeProjectRows(once), once)
 })
 
@@ -182,57 +304,71 @@ test('老师创建新月表单并更新截止时间，不重复创建', async ()
 test('提交并修改；用户身份和主管系数取数据库；他人无法读到我的答案', async () => {
   const h = createHarness(fixture())
   const first = await h.call('submitForm', 'wx-a', { ...answer, openid: 'wx-b', isSupervisor: true, name: '伪造' })
-  assert.equal(first.calc.totalHours, 46)
-  assert.equal(first.calc.effectiveHours, 40)
+  assert.equal(first.calc.totalHours, 34)      // 值班 30 + 集体活动参与 2 次 × 2 h
+  assert.equal(first.calc.effectiveHours, 34)
   assert.equal(h.tables.submissions[0].name, '学助甲')
   assert.equal((await h.call('getForm', 'wx-b')).submission, null)
   assert.equal((await h.call('getForm', 'wx-a')).submission.answers.answer1, '30')
   await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 40 })
   assert.equal(h.tables.submissions.length, 1)
-  assert.equal(h.tables.submissions[0].calc.totalHours, 56)
+  assert.equal(h.tables.submissions[0].calc.totalHours, 44)   // 值班 40 + 4
   assert.equal((await h.call('listForms', 'wx-teacher')).forms[0].count, 1)
 })
 
-test('所有项目费率、待定项目、主管倍率和 40 小时上限与前端一致', async () => {
+test('所有项目费率、单值项目不开放统筹、主管倍率和 40 小时上限与前端一致', async () => {
   for (const isSupervisor of [false, true]) {
     const h = createHarness(fixture())
     for (const key of Object.keys(PROJECT_HOURS)) {
-      const rows = [{ key, count: 3 }]
-      const result = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: rows })
-      assert.deepEqual(result.calc, calcHours(32, rows, isSupervisor))
-    }
-    // 历史数据的兼容点：数据库里存的中文名提交必须算出同样的结果
-    const legacyRows = [{ item: '组织一次内部活动', count: 3 }]
-    const legacy = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: legacyRows })
-    const keyed = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 32, projectRows: [{ key: 'internal_event', count: 3 }] })
-    assert.deepEqual(legacy.calc, keyed.calc)
-    assert.deepEqual(legacy.calc, calcHours(32, [{ key: 'internal_event', count: 3 }], isSupervisor))
-    assert.equal(legacy.calc.totalHours, isSupervisor ? 84 : 56)
+      const who = isSupervisor ? 'wx-b' : 'wx-a'
+      // 参与：每个项目都要与前端的 calcHours 一致
+      const participantRows = [{ key, counts: { participant: 3, coordinator: 0 } }]
+      const byParticipant = await h.call('submitForm', who, { ...answer, dutyHours: 32, projectRows: participantRows })
+      assert.deepEqual(byParticipant.calc, calcHours(32, participantRows, isSupervisor), `参与费率不一致: ${key}`)
 
-    const zero = await h.call('submitForm', isSupervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: 0, projectRows: [] })
+      // 统筹：只有开放统筹的项目才有工时，单值项目即使传了数量也不计入
+      const coordinatorRows = [{ key, counts: { participant: 0, coordinator: 3 } }]
+      const byCoordinator = await h.call('submitForm', who, { ...answer, dutyHours: 32, projectRows: coordinatorRows })
+      assert.deepEqual(byCoordinator.calc, calcHours(32, coordinatorRows, isSupervisor), `统筹费率不一致: ${key}`)
+      if (!hasCoordinatorRate(key)) {
+        assert.equal(byCoordinator.calc.projectHours, 0, `单值项目不应计入统筹: ${key}`)
+      }
+    }
+    // 集体活动（区间 2–8）：参与按下限、统筹按上限
+    const who = isSupervisor ? 'wx-b' : 'wx-a'
+    const mixed = [{ key: 'team_activity', counts: { participant: 2, coordinator: 1 } }]
+    const mixedResult = await h.call('submitForm', who, { ...answer, dutyHours: 30, projectRows: mixed })
+    assert.deepEqual(mixedResult.calc, calcHours(30, mixed, isSupervisor))
+    assert.equal(mixedResult.calc.projectHours, 12)                        // 2×2 + 8×1
+    assert.equal(mixedResult.calc.totalHours, isSupervisor ? 63 : 42)      // 主管：(30+12)×1.5
+    assert.equal(mixedResult.calc.effectiveHours, 40)
+
+    const zero = await h.call('submitForm', who, { ...answer, dutyHours: 0, projectRows: [] })
     assert.equal(zero.calc.effectiveHours, 0)
   }
 })
 
 test('有效工时最高 40 小时；前端预估与云端存储先算主管倍率再封顶', async () => {
+  const twoTeamActivities = [{ key: 'team_activity', counts: { participant: 2, coordinator: 0 } }] // 2×2 = 4 h
   const cases = [
-    { duty: 0, supervisor: false, total: 0, effective: 0 },
-    { duty: 30, supervisor: false, total: 30, effective: 30 },
-    { duty: 39, supervisor: false, total: 39, effective: 39 },
-    { duty: 40, supervisor: false, total: 40, effective: 40 },
-    { duty: 41, supervisor: false, total: 41, effective: 40 },
-    { duty: 50, supervisor: false, total: 50, effective: 40 },
-    { duty: 0, supervisor: true, total: 0, effective: 0 },
-    { duty: 20, supervisor: true, total: 30, effective: 30 },
-    { duty: 26, supervisor: true, total: 39, effective: 39 },
-    { duty: 27, supervisor: true, total: 40.5, effective: 40 },
-    { duty: 30, supervisor: true, total: 45, effective: 40 },
-    { duty: 50, supervisor: true, total: 75, effective: 40 },
-    { duty: 10, rows: [{ key: 'internal_event', count: 2 }], supervisor: true, total: 39, effective: 39 },
-    { duty: 11, rows: [{ key: 'internal_event', count: 2 }], supervisor: true, total: 40.5, effective: 40 }
+    { duty: 0, supervisor: false, projectHours: 0, total: 0, effective: 0 },
+    { duty: 30, supervisor: false, projectHours: 0, total: 30, effective: 30 },
+    { duty: 39, supervisor: false, projectHours: 0, total: 39, effective: 39 },
+    { duty: 40, supervisor: false, projectHours: 0, total: 40, effective: 40 },
+    { duty: 41, supervisor: false, projectHours: 0, total: 41, effective: 40 },
+    { duty: 50, supervisor: false, projectHours: 0, total: 50, effective: 40 },
+    { duty: 0, supervisor: true, projectHours: 0, total: 0, effective: 0 },
+    { duty: 20, supervisor: true, projectHours: 0, total: 30, effective: 30 },
+    { duty: 26, supervisor: true, projectHours: 0, total: 39, effective: 39 },
+    { duty: 27, supervisor: true, projectHours: 0, total: 40.5, effective: 40 },
+    { duty: 30, supervisor: true, projectHours: 0, total: 45, effective: 40 },
+    { duty: 50, supervisor: true, projectHours: 0, total: 75, effective: 40 },
+    // 项目工时 4 h：主管先 ×1.5 再封顶
+    { duty: 35, rows: twoTeamActivities, supervisor: true, projectHours: 4, total: 58.5, effective: 40 },
+    { duty: 24, rows: twoTeamActivities, supervisor: true, projectHours: 4, total: 42, effective: 40 },
+    { duty: 22, rows: twoTeamActivities, supervisor: true, projectHours: 4, total: 39, effective: 39 }
   ]
-  for (const { duty, rows = [], supervisor, total, effective } of cases) {
-    const expected = { dutyHours: duty, projectHours: rows.length ? 16 : 0, totalHours: total, effectiveHours: effective }
+  for (const { duty, rows = [], supervisor, projectHours, total, effective } of cases) {
+    const expected = { dutyHours: duty, projectHours, totalHours: total, effectiveHours: effective }
     assert.deepEqual(calcHours(duty, rows, supervisor), expected)
     const h = createHarness(fixture())
     const result = await h.call('submitForm', supervisor ? 'wx-b' : 'wx-a', { ...answer, dutyHours: duty, projectRows: rows })
@@ -262,8 +398,13 @@ test('无表单、已关闭、已计算、超过截止时间均拒绝提交', as
 test('完整工作流：提交、到期关闭、未提交补零、重复计算、导出数据', async () => {
   const h = createHarness(fixture())
   await h.call('submitForm', 'wx-b', answer)
-  assert.equal(h.tables.submissions[0].calc.totalHours, 69)
+  assert.equal(h.tables.submissions[0].calc.projectHours, 4)
+  assert.equal(h.tables.submissions[0].calc.totalHours, 51)   // 主管：(30 + 4) × 1.5
   assert.equal(h.tables.submissions[0].calc.effectiveHours, 40)
+  // 落库行结构：保留稳定键与中文名，两个角色分别计数
+  assert.deepEqual(h.tables.submissions[0].projectRows, [
+    { key: 'team_activity', label: '集体活动', counts: { participant: 2, coordinator: 0 } }
+  ])
   h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
   const result = await h.call('calculateMonthly', undefined)
   assert.deepEqual(result.calculated, ['2026-10'])

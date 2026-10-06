@@ -1,0 +1,51 @@
+// 表单模板用的费率查询。WXML 不能直接调用 Page 里的 JS 函数，只能通过 WXS，
+// 所以这里保留一份「稳定键 → 参与/统筹工时」的最小表。
+// 该表的值必须与 miniprogram/config/constants.js 的 PROJECT_HOURS 完全一致，
+// 由 tests/workflow.test.js 的用例校验两者不会漂移。
+var HOURS = {
+  news_article: { participant: 2, coordinator: null },
+  feature_interview: { participant: 3, coordinator: 6 },
+  in_depth_report: { participant: 4, coordinator: 8 },
+  social_post_copy: { participant: 1.5, coordinator: null },
+  graphic_layout: { participant: 1, coordinator: 2 },
+  poster: { participant: 1, coordinator: 3 },
+  long_graphic: { participant: 2, coordinator: 4 },
+  short_video_1min: { participant: 2, coordinator: null },
+  short_video_3min: { participant: 2, coordinator: 4 },
+  event_coverage: { participant: 4, coordinator: null },
+  data_report: { participant: 2, coordinator: null },
+  reception: { participant: null, coordinator: null },
+  management_project: { participant: null, coordinator: null },
+  team_activity: { participant: 2, coordinator: 8 }
+}
+
+function getHours(key) {
+  return (key && HOURS[key]) || null
+}
+
+/** 取费率；null 表示该项目该角色不计入工时 */
+function rate(key, role) {
+  var hours = getHours(key)
+  if (!hours) return null
+  var value = hours[role]
+  return value === null || value === undefined ? null : value
+}
+
+/** 该项目是否开放统筹输入框 */
+function hasCoordinator(key) {
+  return rate(key, 'coordinator') !== null
+}
+
+/** 该项目是否完全没有费率（按实际，暂不计入） */
+function isPending(key) {
+  return getHours(key) === null || (getHours(key).participant === null && getHours(key).coordinator === null)
+}
+
+/** 项目行下方的折算标准说明 */
+function rateText(key) {
+  if (isPending(key)) return '按实际 · 暂不计入'
+  if (!hasCoordinator(key)) return '仅参与 ' + rate(key, 'participant') + ' 小时 / 个'
+  return '统筹 ' + rate(key, 'coordinator') + ' h/个 · 参与 ' + rate(key, 'participant') + ' h/个'
+}
+
+module.exports = { rate: rate, hasCoordinator: hasCoordinator, isPending: isPending, rateText: rateText }

@@ -1,3 +1,4 @@
+<wxs src="./rates.wxs" module="rates" />
 <view class="page form-page">
   <view wx:if="{{loading}}" class="card state-card"><text class="state-title">正在读取月度表单</text><text class="helper">请稍候，正在同步你的填报记录。</text></view>
   <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">暂时无法填写</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForm">重新加载</button></view>
@@ -15,15 +16,15 @@
     </view>
     <view class="card">
       <view class="section-heading"><view><text class="section-index">02</text><text class="section-title">项目产出</text></view><text class="helper">填写完成数量</text></view>
-      <view class="table-heading"><text>产出项目 / 折算标准</text><text>数量</text></view>
-      <view class="project-row" wx:for="{{projectRows}}" wx:key="key"><view class="project-info"><text class="project-title">{{item.label}}</text><text class="project-rate">{{item.hours === '待定' ? '工时待定 · 暂不计入' : item.hours + ' 小时 / 个'}}</text></view><input class="count-input" type="number" maxlength="6" value="{{item.count}}" data-idx="{{index}}" bindinput="onCount" disabled="{{closed || submitting}}" aria-label="{{item.label + '产出数量'}}" /></view>
+      <view class="table-heading"><text>产出项目 / 折算标准</text><text class="head-counts">统筹 ｜ 参与</text></view>
+      <view class="project-row" wx:for="{{projectRows}}" wx:key="key"><view class="project-info"><text class="project-title">{{item.label}}</text><text class="project-rate">{{rates.rateText(item.key)}}</text></view><view class="count-group"><view class="count-cell"><text class="count-tag">统筹</text><input class="count-input" type="number" maxlength="6" value="{{item.counts.coordinator}}" data-idx="{{index}}" data-role="coordinator" bindinput="onCount" disabled="{{closed || submitting || !rates.hasCoordinator(item.key)}}" aria-label="{{item.label + '统筹数量'}}" /></view><view class="count-cell"><text class="count-tag">参与</text><input class="count-input" type="number" maxlength="6" value="{{item.counts.participant}}" data-idx="{{index}}" data-role="participant" bindinput="onCount" disabled="{{closed || submitting || rates.isPending(item.key)}}" aria-label="{{item.label + '参与数量'}}" /></view></view></view>
     </view>
     <view class="card">
       <view class="section-heading"><view><text class="section-index">03</text><text class="section-title">补充说明</text></view></view>
       <text class="form-label field-first">参与的项目名称</text><input class="input" placeholder-class="placeholder" placeholder="填写项目名称，多个项目可用顿号分隔" value="{{projectName}}" bindinput="onProjectName" disabled="{{closed || submitting}}" />
       <text class="form-label">额外工时申诉 <text class="optional">选填</text></text><textarea class="textarea" placeholder-class="placeholder" placeholder="如有额外工时，请说明工作内容与时长" maxlength="1000" value="{{appeal}}" bindinput="onAppeal" disabled="{{closed || submitting}}" /><text class="helper">请提供清晰的说明，便于负责老师核对。</text>
     </view>
-    <view class="card summary-card"><text class="section-title">工时预估</text><view class="summary-grid"><view><text class="metric-label">总工时</text><view><text class="metric-value">{{preview.totalHours}}</text><text class="metric-unit"> h</text></view></view><view><text class="metric-label">有效工时</text><view><text class="metric-value accent">{{preview.effectiveHours}}</text><text class="metric-unit"> h</text></view></view></view><text class="helper">按现有规则折算；学生主管总工时 × 1.5，有效工时最多为 40 小时。</text></view>
+    <view class="card summary-card"><text class="section-title">工时预估</text><view class="summary-grid"><view><text class="metric-label">总工时</text><view><text class="metric-value">{{preview.totalHours}}</text><text class="metric-unit"> h</text></view></view><view><text class="metric-label">有效工时</text><view><text class="metric-value accent">{{preview.effectiveHours}}</text><text class="metric-unit"> h</text></view></view></view><text class="helper">统筹按区间上限、参与按下限折算，同一项目可同时填写两种；标为「仅参与」的项目没有统筹算法，须填入参与框。学生主管在统计工时基础上 × 1.5，有效工时最多 40 小时。</text></view>
     <view class="submit-bar" wx:if="{{!closed}}"><view class="submit-info"><text class="submit-caption">预估有效工时</text><text class="submit-total">{{preview.effectiveHours}} <text class="metric-unit">h</text></text></view><button class="btn-primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">{{submitting ? '正在提交' : (hasSubmission ? '更新本月记录' : '提交本月记录')}}</button></view>
   </block>
 </view>

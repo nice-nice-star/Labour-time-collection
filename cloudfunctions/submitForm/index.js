@@ -1,25 +1,27 @@
 // cloudfunctions/submitForm/index.js
 const cloud = require('wx-server-sdk')
 const {
-  PROJECT_HOURS,
   normalizeProjectRows,
+  rateOf,
   LOCATION_OPTIONS,
   resolveDepartment
 } = require('./constants')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-// 费率表以稳定键为键；落库与导出仍写中文名，与历史数据保持一致
-const RATES = PROJECT_HOURS
 const LOCATIONS = LOCATION_OPTIONS
 
 function calc(answers, projectRows, isSupervisor) {
   const duty = Number(answers.answer1) || 0
   let project = 0
   projectRows.forEach(r => {
-    const rate = RATES[r.key]
-    if (rate == null) return
-    project += rate * (Number(r.count) || 0)
+    const counts = r.counts || {}
+    // 单值项目只开放参与；rateOf 对统筹返回 null，乘出来是 0
+    ;['participant', 'coordinator'].forEach(role => {
+      const rate = rateOf(r.key, role)
+      if (rate == null) return
+      project += rate * (Number(counts[role]) || 0)
+    })
   })
   let total = duty + project
   if (isSupervisor) total = total * 1.5
@@ -58,7 +60,7 @@ exports.main = async (event) => {
     answer5: String(projectName || '').trim(),
     answer6: String(appeal || '').trim()
   }
-  // 归一化为 { key, label, count }，落库保留 label 以兼容导出与历史数据
+  // 归一化为 { key, label, counts:{participant,coordinator} }，落库保留 label 作为导出文本
   const rows = normalizeProjectRows(projectRows)
   const calcResult = calc(answers, rows, !!stu.isSupervisor)
 

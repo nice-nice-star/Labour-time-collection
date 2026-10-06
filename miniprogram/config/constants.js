@@ -1,60 +1,73 @@
-// 产出项目的稳定键。费率以 key 为准；中文名只是显示文本，
-// 同时作为历史数据（早期提交里存的是中文名）的兼容入口。
+// 产出项目的稳定键。费率以 key 为准；中文名只是显示文本。
 const PROJECT_KEYS = {
-  INTERVIEW_PREP: 'interview_prep',
-  INTERVIEW_JOIN: 'interview_join',
-  INTERVIEW_DRAFT: 'interview_draft',
-  VIDEO_FULL: 'video_full',
-  VIDEO_SHORT: 'video_short',
-  VIDEO_LONG: 'video_long',
-  VIDEO_EDIT: 'video_edit',
-  XIAOHONGSHU: 'xiaohongshu',
-  SOCIAL_ARTICLE: 'social_article',
-  EVENT_PHOTO: 'event_photo',
+  NEWS_ARTICLE: 'news_article',
+  FEATURE_INTERVIEW: 'feature_interview',
+  IN_DEPTH_REPORT: 'in_depth_report',
+  SOCIAL_POST_COPY: 'social_post_copy',
+  GRAPHIC_LAYOUT: 'graphic_layout',
   POSTER: 'poster',
-  NEWS_MONITOR: 'news_monitor',
-  INTERNAL_EVENT: 'internal_event'
+  LONG_GRAPHIC: 'long_graphic',
+  SHORT_VIDEO_1MIN: 'short_video_1min',
+  SHORT_VIDEO_3MIN: 'short_video_3min',
+  EVENT_COVERAGE: 'event_coverage',
+  DATA_REPORT: 'data_report',
+  RECEPTION: 'reception',
+  MANAGEMENT_PROJECT: 'management_project',
+  TEAM_ACTIVITY: 'team_activity'
 }
 
-// 项目工时统计表（每个产出项目的等效工时），键为稳定键
-// 注意：视频剪辑为"待定"，用 null 表示，计算时跳过
+// 项目费率（每个产出项目的等效工时），键为稳定键。
+// participant 参与（区间下限）；coordinator 统筹（区间上限）。
+// coordinator 为 null 表示该项目只有参与一种算法：单值项目（README 的标准工时）
+// 与「按实际」的项目都只按参与计，表单不显示统筹输入框。
 const PROJECT_HOURS = {
-  [PROJECT_KEYS.INTERVIEW_PREP]: 2,
-  [PROJECT_KEYS.INTERVIEW_JOIN]: 1,
-  [PROJECT_KEYS.INTERVIEW_DRAFT]: 3,
-  [PROJECT_KEYS.VIDEO_FULL]: 3,
-  [PROJECT_KEYS.VIDEO_SHORT]: 4,
-  [PROJECT_KEYS.VIDEO_LONG]: 8,
-  [PROJECT_KEYS.VIDEO_EDIT]: null,          // 待定
-  [PROJECT_KEYS.XIAOHONGSHU]: 3,
-  [PROJECT_KEYS.SOCIAL_ARTICLE]: 1,
-  [PROJECT_KEYS.EVENT_PHOTO]: 2,
-  [PROJECT_KEYS.POSTER]: 2,
-  [PROJECT_KEYS.NEWS_MONITOR]: 2,
-  [PROJECT_KEYS.INTERNAL_EVENT]: 8
+  [PROJECT_KEYS.NEWS_ARTICLE]: { participant: 2, coordinator: null },
+  [PROJECT_KEYS.FEATURE_INTERVIEW]: { participant: 3, coordinator: 6 },
+  [PROJECT_KEYS.IN_DEPTH_REPORT]: { participant: 4, coordinator: 8 },
+  [PROJECT_KEYS.SOCIAL_POST_COPY]: { participant: 1.5, coordinator: null },
+  [PROJECT_KEYS.GRAPHIC_LAYOUT]: { participant: 1, coordinator: 2 },
+  [PROJECT_KEYS.POSTER]: { participant: 1, coordinator: 3 },
+  [PROJECT_KEYS.LONG_GRAPHIC]: { participant: 2, coordinator: 4 },
+  [PROJECT_KEYS.SHORT_VIDEO_1MIN]: { participant: 2, coordinator: null },
+  [PROJECT_KEYS.SHORT_VIDEO_3MIN]: { participant: 2, coordinator: 4 },
+  [PROJECT_KEYS.EVENT_COVERAGE]: { participant: 4, coordinator: null },
+  [PROJECT_KEYS.DATA_REPORT]: { participant: 2, coordinator: null },
+  [PROJECT_KEYS.RECEPTION]: { participant: null, coordinator: null },            // 按实际，待定
+  [PROJECT_KEYS.MANAGEMENT_PROJECT]: { participant: null, coordinator: null },   // 按实际，待定
+  [PROJECT_KEYS.TEAM_ACTIVITY]: { participant: 2, coordinator: 8 }
 }
 
-// 项目工时统计表的行（与 README 表格顺序一致，作为表单第四题的模板）
-// key 为稳定键（用于计算与提交），label 为中文显示文本
+// 项目工时统计表的行（顺序与 README 的「项目工时统计表」一致，作为表单第四题的模板）
+// key     稳定键（用于计算与提交，唯一身份）
+// label   中文显示文本（当前界面即使用此字段，也是落库与导出的文本）
+// labelEn 英文显示文本，目前只作为数据备用、不参与任何渲染
+// 费率不在这里重复：展示与计算都从 PROJECT_HOURS 取，避免两处各写一份
 const PROJECT_ROWS = [
-  { key: PROJECT_KEYS.INTERVIEW_PREP, label: '深度访谈前期准备', hours: 2 },
-  { key: PROJECT_KEYS.INTERVIEW_JOIN, label: '参与深度访谈', hours: 1 },
-  { key: PROJECT_KEYS.INTERVIEW_DRAFT, label: '访谈成稿', hours: 3 },
-  { key: PROJECT_KEYS.VIDEO_FULL, label: '排版制作一条完整的视频', hours: 3 },
-  { key: PROJECT_KEYS.VIDEO_SHORT, label: '制作一条短视频 (1-5)mins', hours: 4 },
-  { key: PROJECT_KEYS.VIDEO_LONG, label: '制作一条长视频 ~10mins', hours: 8 },
-  { key: PROJECT_KEYS.VIDEO_EDIT, label: '视频剪辑', hours: '待定' },
-  { key: PROJECT_KEYS.XIAOHONGSHU, label: '小红书编辑一条', hours: 3 },
-  { key: PROJECT_KEYS.SOCIAL_ARTICLE, label: '撰写一条海外社媒稿件', hours: 1 },
-  { key: PROJECT_KEYS.EVENT_PHOTO, label: '参与一场活动摄影', hours: 2 },
-  { key: PROJECT_KEYS.POSTER, label: '海报设计', hours: 2 },
-  { key: PROJECT_KEYS.NEWS_MONITOR, label: '新闻监测', hours: 2 },
-  { key: PROJECT_KEYS.INTERNAL_EVENT, label: '组织一次内部活动', hours: 8 }
+  { key: PROJECT_KEYS.NEWS_ARTICLE, label: '新闻稿/通讯（800字内）', labelEn: 'News article / newsletter report (within 800 words)' },
+  { key: PROJECT_KEYS.FEATURE_INTERVIEW, label: '人物专访（采访+成稿）', labelEn: 'Feature interview (conducting the interview + writing the article)' },
+  { key: PROJECT_KEYS.IN_DEPTH_REPORT, label: '深度报道（文字或视频）', labelEn: 'In-depth report (written or video)' },
+  { key: PROJECT_KEYS.SOCIAL_POST_COPY, label: '推文文案', labelEn: 'Social media post copywriting' },
+  { key: PROJECT_KEYS.GRAPHIC_LAYOUT, label: '图文排版', labelEn: 'Graphic-and-text layout design' },
+  { key: PROJECT_KEYS.POSTER, label: '海报设计', labelEn: 'Poster design' },
+  { key: PROJECT_KEYS.LONG_GRAPHIC, label: '推文长图', labelEn: 'Long-form graphic for social media posts' },
+  { key: PROJECT_KEYS.SHORT_VIDEO_1MIN, label: '短视频剪辑（≤1分钟）', labelEn: 'Short video editing (≤1 minute)' },
+  { key: PROJECT_KEYS.SHORT_VIDEO_3MIN, label: '短视频剪辑（1–3分钟）', labelEn: 'Short video editing (1–3 minutes)' },
+  { key: PROJECT_KEYS.EVENT_COVERAGE, label: '活动跟拍（半天）', labelEn: 'Event photo/video coverage (half day)' },
+  { key: PROJECT_KEYS.DATA_REPORT, label: '数据报表', labelEn: 'Data report' },
+  { key: PROJECT_KEYS.RECEPTION, label: '接待活动', labelEn: 'Reception / hospitality duties' },
+  { key: PROJECT_KEYS.MANAGEMENT_PROJECT, label: '管理项目', labelEn: 'Management project' },
+  { key: PROJECT_KEYS.TEAM_ACTIVITY, label: '集体活动', labelEn: 'Team / group activity' }
 ]
 
 // 稳定键 → 中文显示文本
 const PROJECT_LABELS = PROJECT_ROWS.reduce((acc, row) => {
   acc[row.key] = row.label
+  return acc
+}, {})
+
+// 稳定键 → 英文显示文本（当前不参与渲染，供后续双语切换使用）
+const PROJECT_LABELS_EN = PROJECT_ROWS.reduce((acc, row) => {
+  acc[row.key] = row.labelEn
   return acc
 }, {})
 
@@ -86,16 +99,48 @@ function labelOf(key) {
 }
 
 /**
- * 把任意来源的提交行（新的 key 形式或历史的中文名形式）归一化成统一结构，
- * 无法识别的项目直接剔除，数量取非负整数。
+ * 按角色取费率。展示与计算都必须走这个函数，避免两处各解释一次区间。
+ * @param {string} key 稳定键
+ * @param {'participant'|'coordinator'} role
+ * @returns {number|null} null 表示该项目此角色不计入工时（待定或未开放统筹）
+ */
+function rateOf(key, role) {
+  const hours = PROJECT_HOURS[key]
+  if (!hours || typeof hours !== 'object') return null
+  const rate = hours[role]
+  return rate == null ? null : rate
+}
+
+/**
+ * 该项目是否开放统筹计数（费率为 null 的项目只有参与一种算法）
+ * @param {string} key
+ * @returns {boolean}
+ */
+function hasCoordinatorRate(key) {
+  return rateOf(key, 'coordinator') != null
+}
+
+/**
+ * 把任意来源的提交行归一化成统一结构：剔除无法识别的项目，
+ * 每行按参与/统筹分别取非负整数，两者都为 0 的行也保留（表单按模板整表提交）。
+ * 不开放统筹的项目忽略传入的统筹数量。
  * @param {Array} rows
- * @returns {Array<{key:string,label:string,count:number}>}
+ * @returns {Array<{key:string,label:string,counts:{participant:number,coordinator:number}}>}
  */
 function normalizeProjectRows(rows) {
   return (rows || []).reduce((acc, row) => {
     const key = resolveProjectKey(row && (row.key || row.item))
     if (!key) return acc
-    acc.push({ key, label: labelOf(key), count: Math.max(0, Math.floor(Number(row.count) || 0)) })
+    const saved = (row && row.counts) || {}
+    const count = (value) => Math.max(0, Math.floor(Number(value) || 0))
+    acc.push({
+      key,
+      label: labelOf(key),
+      counts: {
+        participant: count(saved.participant),
+        coordinator: hasCoordinatorRate(key) ? count(saved.coordinator) : 0
+      }
+    })
     return acc
   }, [])
 }
@@ -155,9 +200,12 @@ module.exports = {
   PROJECT_HOURS,
   PROJECT_ROWS,
   PROJECT_LABELS,
+  PROJECT_LABELS_EN,
   PROJECT_KEYS_BY_LABEL,
   resolveProjectKey,
   labelOf,
+  rateOf,
+  hasCoordinatorRate,
   normalizeProjectRows,
   LOCATION_OPTIONS,
   DEPARTMENTS,

@@ -10,6 +10,8 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 
 开发版与体验版需要在 `miniprogram/config/environment.js` 配置独立测试云环境 ID；未配置时会停止连接，避免误写正式数据。本地测试无需真实微信或云环境。
 
+现在是测试环境，没有历史遗留数据需要处理。
+
 ### 账户类型
 > 1.导出账户，由相关老师负责，按照老师需求单独创建，不提供申请。拥有开启月度统计和导出数据的权限。
 > 2.学助账户，提前内置数据库存储每个学生助理的信息。初次登陆时，每个学生提出申请，用唯一的微信账号与内置学助信息一一对应。之后用户基于构建月度表单提供信息。不具备导出权限。
@@ -101,22 +103,35 @@ else :
 
 
 ### 项目工时统计表
-| 产出项目              | 等效工时（每个） |
-| ----------------- | ---- |
-| 深度访谈前期准备          | 2h   |
-| 参与深度访谈            | 1h   |
-| 访谈成稿              | 3h   |
-| 排版制作一条完整的视频       | 3h   |
-| 制作一条短视频 (1-5)mins | 4h   |
-| 制作一条长视频 ~10mins   | 8h   |
-| 视频剪辑              | 待定   |
-| 小红书编辑一条           | 3h   |
-| 撰写一条海外社媒稿件        | 1h   |
-| 参与一场活动摄影          | 2h   |
-| 海报设计              | 2h   |
-| 新闻监测              | 2h   |
-| 组织一次内部活动          | 8h   |
-|                   |      |
+
+区间表示统筹与参与两种算法：**统筹取区间上限，参与取下限**。只有单个数值的项目
+（标准工时）没有统筹算法，一律按参与计；标「按实际」的项目暂不计入，待定。
+
+表单第 4 题每一项都提供「统筹」和「参与」两个输入框，同一个学助可以在同一项目上
+同时申报两种数量；标为「仅参与」的项目统筹框不可填。
+
+| 交付物                 | 标准工时（参考）| 统筹（取上限）  | 参与（取下限）  | 档级（这一项先不管）   |	项目英文翻译                                                     |
+| ---------------------- | --------------- | --------------- | --------------- | ---------------------- | -----------------------------------------------------------------  |
+| 新闻稿/通讯（800字内） | 2 h	           | —（仅参与）     | 2 h             | 标准	                | News article / newsletter report (within 800 words)                |
+| 人物专访（采访+成稿）	 | 3–6 h	       | 6 h             | 3 h             | 复杂               	| Feature interview (conducting the interview + writing the article) |
+| 深度报道（文字或视频） | 4–8 h	       | 8 h             | 4 h             | 复杂               	| In-depth report (written or video)                                 |
+| 推文文案	             | 1.5 h	       | —（仅参与）     | 1.5 h           | 标准               	| Social media post copywriting                                      |
+| 图文排版	             | 1–2 h	       | 2 h             | 1 h             | 标准               	| Graphic-and-text layout design                                     |
+| 海报设计	             | 1–3 h	       | 3 h             | 1 h             | 标准               	| Poster design                                                      |
+| 推文长图	             | 2–4 h	       | 4 h             | 2 h             | 复杂               	| Long-form graphic for social media posts                           |
+| 短视频剪辑（≤1分钟）	 | 2 h	           | —（仅参与）     | 2 h             | 标准               	| Short video editing (≤1 minute)                                    |
+| 短视频剪辑（1–3分钟）	 | 2–4 h	       | 4 h             | 2 h             | 复杂               	| Short video editing (1–3 minutes)                                  |
+| 活动跟拍（半天）	     | 4 h	           | —（仅参与）     | 4 h             | 计时               	| Event photo/video coverage (half day)                              |
+| 数据报表               | 2 h	           | —（仅参与）     | 2 h             | 标准               	| Data report                                                        |
+| 接待活动               | 按实际	       | —               | 待定            | 计时               	| Reception / hospitality duties                                     |
+| 管理项目               | 按实际	       | —               | 待定            | 计时               	| Management project                                                 |
+| 集体活动               | 2-8h	           | 8 h             | 2 h             | 标准               	| Team / group activity                                              |
+
+代码里的权威来源是 `miniprogram/config/constants.js` 的 `PROJECT_HOURS`（键为稳定键，
+每项形如 `{ participant, coordinator }`）；表单模板通过 `pages/form/rates.wxs` 读取同一份
+费率，`npm test` 会校验两者以及云函数副本完全一致。
+
+
 
 ### 导出要求
 导出产物是 "Year_Month_Day.xlsx"

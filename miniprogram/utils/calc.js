@@ -1,19 +1,23 @@
-const { PROJECT_HOURS } = require('../config/constants')
+const { rateOf } = require('../config/constants')
 
 /**
  * 工时计算（与云端保持一致）
  * @param {number} dutyHours 值班总工时
- * @param {Array<{key:string,count:number}>} projectRows 项目工时统计（按稳定键）
- * @param {boolean} isSupervisor 是否主管
+ * @param {Array<{key:string,counts:{participant:number,coordinator:number}}>} projectRows 项目工时统计（按稳定键，参与/统筹分别计数）
+ * @param {boolean} isSupervisor 是否学生主管
  * @returns {{dutyHours:number, projectHours:number, totalHours:number, effectiveHours:number}}
  */
 function calcHours(dutyHours, projectRows, isSupervisor) {
   const duty = Number(dutyHours) || 0
   let project = 0
   ;(projectRows || []).forEach(r => {
-    const rate = PROJECT_HOURS[r.key]     // 费率表键为稳定键
-    if (rate == null) return            // 待定项目不计入
-    project += rate * (Number(r.count) || 0)
+    const counts = (r && r.counts) || {}
+    // 单值项目只开放参与，rateOf 对统筹返回 null，乘出来仍是 0
+    ;['participant', 'coordinator'].forEach(role => {
+      const rate = rateOf(r.key, role)
+      if (rate == null) return             // 待定或该项目不开放此角色
+      project += rate * (Number(counts[role]) || 0)
+    })
   })
   let total = duty + project
   if (isSupervisor) total = total * 1.5 // 学生主管 ×1.5
