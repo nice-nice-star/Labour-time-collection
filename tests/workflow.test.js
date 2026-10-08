@@ -32,9 +32,9 @@ function loadFormWxs() {
 function fixture() {
   return {
     students: [
-      // 主管乙的名单值故意写成 'cpro ' 用于验证归一化；待绑定丙故意缺 department 用于验证空字符串
-      { _id: 'a', name: '学助甲', studentId: 'S1', openid: 'wx-a', isSupervisor: false, department: 'CPRO' },
-      { _id: 'b', name: '主管乙', studentId: 'S2', openid: 'wx-b', isSupervisor: true, department: 'cpro ' },
+      // 主管乙的名单值故意写成小写带空格用于验证归一化；待绑定丙故意缺 department 用于验证空字符串
+      { _id: 'a', name: '学助甲', studentId: 'S1', openid: 'wx-a', isSupervisor: false, department: 'Administration_and_Data' },
+      { _id: 'b', name: '主管乙', studentId: 'S2', openid: 'wx-b', isSupervisor: true, department: ' administration_and_data ' },
       { _id: 'c', name: '待绑定丙', studentId: 'S3', isSupervisor: false }
     ],
     export_accounts: [{ _id: 't', name: '老师', exportId: 'T1', openid: 'wx-teacher' }],
@@ -68,6 +68,25 @@ test('前端与云端的费率表、标签表完全一致（防止键值分离�
   // 标签表与键值转换必须同步
   assert.deepEqual(PROJECT_LABELS, cloudConstants.PROJECT_LABELS)
   assert.equal(Object.keys(PROJECT_LABELS).length, 14)
+})
+
+test('exportData 的费率表副本与小程序一致，折算口径与 submitForm 相同', () => {
+  const exportConstants = require('../cloudfunctions/exportData/constants')
+  assert.deepEqual(
+    Object.keys(PROJECT_HOURS).sort(),
+    Object.keys(exportConstants.PROJECT_HOURS).sort()
+  )
+  for (const key of Object.keys(PROJECT_HOURS)) {
+    assert.deepEqual(PROJECT_HOURS[key], exportConstants.PROJECT_HOURS[key], `导出费率不一致: ${key}`)
+    for (const role of ['participant', 'coordinator']) {
+      assert.equal(exportConstants.rateOf(key, role), rateOf(key, role), `导出费率取值不一致: ${key}/${role}`)
+    }
+  }
+  // 折算公式：参与数 × 参与费率 + 统筹数 × 统筹费率；两端都待定时返回 null 而不是 0
+  assert.equal(exportConstants.hoursOfRow('team_activity', { participant: 2, coordinator: 1 }), 12)  // 2×2 + 8×1
+  assert.equal(exportConstants.hoursOfRow('poster', { participant: 0, coordinator: 0 }), 0)
+  assert.equal(exportConstants.hoursOfRow('reception', { participant: 3, coordinator: 0 }), null)     // 按实际
+  assert.equal(exportConstants.hoursOfRow('unknown_key', { participant: 1, coordinator: 0 }), null)   // 未知项目
 })
 
 test('表单 WXS 的费率表与 constants.js 完全一致（WXML 只能通过 WXS 取费率）', () => {
@@ -175,15 +194,15 @@ test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly
   }
 
   // 归一化：忽略大小写与多余空白
-  assert.equal(resolveDepartment('CPRO'), 'CPRO')
-  assert.equal(resolveDepartment('cpro'), 'CPRO')
-  assert.equal(resolveDepartment('  CprO  '), 'CPRO')
+  assert.equal(resolveDepartment('Administration_and_Data'), 'Administration_and_Data')
+  assert.equal(resolveDepartment('administration_and_data'), 'Administration_and_Data')
+  assert.equal(resolveDepartment('  AdministratION_AND_data  '), 'Administration_and_Data')
   // 枚举外、留空、非字符串一律空字符串（不静默保留错值）
-  for (const value of ['图书馆', 'CPRO 组', '', '   ', null, undefined, 0]) {
+  for (const value of ['图书馆', 'Unknown_Department', '', '   ', null, undefined, 0]) {
     assert.equal(resolveDepartment(value), '', `枚举外的值未归一化为空字符串: ${value}`)
   }
   // 三处结果必须一致（含名单里可能出现的全角等写法）
-  for (const value of ['CPRO', 'cpro', '  CprO  ', 'ＣＰＲＯ', '图书馆', '', null, undefined]) {
+  for (const value of ['Administration_and_Data', 'administration_and_data', '  AdministratION_AND_data  ', 'ＡＤＭＩＮＩＳＴＲＡＴＩＯＮ', '图书馆', '', null, undefined]) {
     const expected = resolveDepartment(value)
     assert.equal(submitConstants.resolveDepartment(value), expected, `submitForm 归一化不一致: ${value}`)
     assert.equal(calcConstants.resolveDepartment(value), expected, `calculateMonthly 归一化不一致: ${value}`)
@@ -417,24 +436,59 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   assert.equal(exported.ok, true)
   assert.equal(exported.filename, '2026_10_15.xlsx')
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
+  assert.equal(sheets.length, 2)
   assert.equal(sheets[0].name, '2026-10')
   assert.equal(sheets[0].data.length, 3)
-  assert.deepEqual(sheets[0].data[0], ['Name', '有效工时', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'Answer6', '部门'])
-  // 部门列：已提交者取提交时快照，未提交者取补零时的名单值
-  assert.equal(sheets[0].data.find(row => row[0] === '学助甲').at(-1), 'CPRO')
-  assert.equal(sheets[0].data.find(row => row[0] === '主管乙').at(-1), 'CPRO')
-  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[1], 40)
-  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[1], 0)
+  // 主表不再放第四题明细，改为末尾的「项目明细」工作表
+  assert.deepEqual(sheets[0].data[0], ['姓名', '部门', '有效工时', '值班总工时', '值班时段', '值班地点', '项目名称', '额外工时申诉'])
+  // 部门列：已提交者取提交时快照，未提交者取补零时的名单值；导出时换成中文名
+  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[1], '行政与数据')
+  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[1], '行政与数据')
+  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[2], 40)
+  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[2], 0)
+
+  // 项目明细：每人每个申报项目一行；学助甲由月结补零、projectRows 为空，不产生明细行
+  assert.equal(sheets[1].name, '项目明细')
+  assert.deepEqual(sheets[1].data[0], ['姓名', '部门', '项目', '参与数', '统筹数', '折算工时'])
+  assert.equal(sheets[1].data.length, 2)
+  assert.deepEqual(sheets[1].data[1], ['主管乙', '行政与数据', '集体活动', 2, 0, 4])
+})
+
+test('项目明细工作表：一人多项目、统筹列、按实际留空、全 0 行不写', async () => {
+  const h = createHarness(fixture())
+  await h.call('submitForm', 'wx-a', {
+    ...answer,
+    projectRows: [
+      { key: 'team_activity', counts: { participant: 2, coordinator: 1 } },   // 2×2 + 8×1 = 12
+      { key: 'poster', counts: { participant: 3, coordinator: 0 } },          // 3×1 = 3
+      { key: 'reception', counts: { participant: 2, coordinator: 0 } },       // 按实际 → 折算工时留空
+      { key: 'news_article', counts: { participant: 0, coordinator: 0 } }     // 全 0 → 不写
+    ]
+  })
+  const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
+  assert.equal(exported.ok, true)
+  const sheets = JSON.parse(h.uploads[0].fileContent.toString())
+  const detail = sheets[1]
+  assert.equal(detail.name, '项目明细')
+  assert.deepEqual(detail.data[0], ['姓名', '部门', '项目', '参与数', '统筹数', '折算工时'])
+  assert.deepEqual(detail.data.slice(1), [
+    ['学助甲', '行政与数据', '集体活动', 2, 1, 12],
+    ['学助甲', '行政与数据', '海报设计', 3, 0, 3],
+    ['学助甲', '行政与数据', '接待活动', 2, 0, '']
+  ])
+  // 主表仍是一人一行，且不含明细列
+  assert.equal(sheets[0].data.length, 2)
+  assert.equal(sheets[0].data[1].length, 8)
 })
 
 test('部门：按名单落库快照，枚举外与缺失写空字符串，事件参数无法伪造', async () => {
   const h = createHarness(fixture())
   await h.call('bindStudent', 'wx-c', { name: '待绑定丙', studentId: 'S3' })
-  // 主管乙名单值是 'cpro '，落库归一化成 CPRO；事件里的 department 不参与写入
+  // 主管乙名单值是 ' administration_and_data '，落库归一化成规范值；事件里的 department 不参与写入
   await h.call('submitForm', 'wx-b', { ...answer, department: '伪造部门' })
-  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').department, 'CPRO')
+  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').department, 'Administration_and_Data')
   // 名单缺 department：提交仍然成功，部门为空字符串
-  const missing = await h.call('submitForm', 'wx-c', { ...answer, department: 'CPRO' })
+  const missing = await h.call('submitForm', 'wx-c', { ...answer, department: 'Administration_and_Data' })
   assert.equal(missing.ok, true)
   assert.equal(h.tables.submissions.find(r => r.openid === 'wx-c').department, '')
 })
@@ -442,7 +496,7 @@ test('部门：按名单落库快照，枚举外与缺失写空字符串，事�
 test('部门：未提交者补零同样带部门，导出取提交时的快照而非当前名单', async () => {
   const seed = fixture()
   seed.students[1].department = '图书馆'          // 枚举外：补零行应写空字符串
-  seed.students.push({ _id: 'd', name: '主管丁', studentId: 'S4', openid: 'wx-d', isSupervisor: true, department: ' cpro ' })
+  seed.students.push({ _id: 'd', name: '主管丁', studentId: 'S4', openid: 'wx-d', isSupervisor: true, department: ' administration_and_data ' })
   const h = createHarness(seed)
   await h.call('submitForm', 'wx-a', answer)
   h.tables.students[0].department = '图书馆'       // 提交后老师改了名单，不影响已落库的快照
@@ -453,12 +507,12 @@ test('部门：未提交者补零同样带部门，导出取提交时的快照�
   assert.equal(exported.ok, true)
   const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
   const rowOf = name => sheet.data.find(row => row[0] === name)
-  assert.equal(rowOf('学助甲').at(-1), 'CPRO')     // 提交时的快照
-  assert.equal(rowOf('主管乙').at(-1), '')          // 补零行：名单枚举外 → 空字符串
-  assert.equal(rowOf('主管丁').at(-1), 'CPRO')      // 补零行：名单 ' cpro ' → 归一化
+  assert.equal(rowOf('学助甲')[1], '行政与数据')     // 提交时的快照
+  assert.equal(rowOf('主管乙')[1], '')               // 补零行：名单枚举外 → 空字符串
+  assert.equal(rowOf('主管丁')[1], '行政与数据')     // 补零行：名单小写带空格 → 归一化再转中文
 })
 
-test('部门：新增该列之前的历史提交没有 department 字段，导出为空字符串且不报错', async () => {
+test('部门：历史提交缺字段导出为空字符串，已移除的旧部门原样输出且不报错', async () => {
   const seed = fixture()
   seed.submissions = [{
     _id: 'legacy', formId: 'f', month: '2026-10', openid: 'wx-a',
@@ -466,15 +520,23 @@ test('部门：新增该列之前的历史提交没有 department 字段，导�
     answers: { answer1: '30', answer2: '', answer3: 'ABE303', answer4: '见 projectRows', answer5: '', answer6: '' },
     projectRows: [], calc: { dutyHours: 30, projectHours: 0, totalHours: 30, effectiveHours: 40 },
     createTime: '2026-10-01', updateTime: '2026-10-01'
+  }, {
+    _id: 'legacy-removed', formId: 'f', month: '2026-10', openid: 'wx-b',
+    studentId: 'S2', name: '主管乙', isSupervisor: true,
+    department: 'CPRO',   // 已从部门枚举移除的旧快照：不在中文映射表里
+    answers: { answer1: '20', answer2: '周一上午', answer3: 'ABE303', answer4: '见 projectRows', answer5: '', answer6: '' },
+    projectRows: [], calc: { dutyHours: 20, projectHours: 0, totalHours: 30, effectiveHours: 30 },
+    createTime: '2026-10-01', updateTime: '2026-10-01'
   }]
   const h = createHarness(seed)
   const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
   assert.equal(exported.ok, true)
   const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
-  assert.equal(sheet.data.length, 2)
-  assert.equal(sheet.data[1][0], '学助甲')
-  assert.equal(sheet.data[1].length, 9)        // 旧行也要补齐到 9 列
-  assert.equal(sheet.data[1].at(-1), '')       // 缺字段 → 空字符串，不是 undefined 或报错
+  assert.equal(sheet.data.length, 3)
+  const rowOf = name => sheet.data.find(row => row[0] === name)
+  assert.equal(rowOf('学助甲').length, 8)      // 主表已移除第四题明细，旧行也要补齐到 8 列
+  assert.equal(rowOf('学助甲')[1], '')         // 缺部门字段 → 空字符串，不是 undefined 或报错
+  assert.equal(rowOf('主管乙')[1], 'CPRO')     // 查不到中文名 → 原样输出，不静默清空
 })
 
 // 已确认的风险明确标记为待办，避免把本地通过误认为已经可上线。

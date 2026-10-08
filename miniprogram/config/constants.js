@@ -154,7 +154,7 @@ const LOCATION_OPTIONS = ['University gift shop', 'ABE303', 'ABW709']
 // 枚举与别名都匹配不上（含留空、写错部门名）按空字符串处理。
 // 新增部门要同时修改三处 DEPARTMENTS 与 DEPARTMENT_ALIASES：本文件、cloudfunctions/submitForm/constants.js、
 // cloudfunctions/calculateMonthly/constants.js（云函数无法跨目录 require 小程序代码）。
-const DEPARTMENTS = ['CPRO', 'Public_Relations','Domestic_social_Media','Multimedia_center','Journalist_News_Center','Overseas_social_Media','University_Gift_shop','Administration_and_Data','Magazine_publisher']
+const DEPARTMENTS = ['Public_Relations','Domestic_social_Media','Multimedia_center','Journalist_News_Center','Overseas_social_Media','University_Gift_shop','Administration_and_Data','Magazine_publisher']
 
 // 别名表：README 里列出的中文名与带空格英文显示名 → 规范值。键统一小写。
 // 老师照抄文档写 '公共关系' 或 'Public Relations' 也能落对，不必记住下划线写法。

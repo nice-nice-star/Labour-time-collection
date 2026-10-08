@@ -149,7 +149,7 @@ const LOCATION_OPTIONS = ['University gift shop', 'ABE303', 'ABW709']
 // 学助所属部门（受控枚举）：名单里 students 集合的 department 字段只能取这里的值。
 // 归一化规则：忽略大小写与多余空白；中文名/英文显示名按 DEPARTMENT_ALIASES 归一；
 // 枚举与别名都匹配不上（含留空、写错部门名）按空字符串处理。
-const DEPARTMENTS = ['CPRO', 'Public_Relations','Domestic_social_Media','Multimedia_center','Journalist_News_Center','Overseas_social_Media','University_Gift_shop','Administration_and_Data','Magazine_publisher']
+const DEPARTMENTS = ['Public_Relations','Domestic_social_Media','Multimedia_center','Journalist_News_Center','Overseas_social_Media','University_Gift_shop','Administration_and_Data','Magazine_publisher']
 
 // 别名表：README 里列出的中文名与带空格英文显示名 → 规范值。键统一小写。
 const DEPARTMENT_ALIASES = {
