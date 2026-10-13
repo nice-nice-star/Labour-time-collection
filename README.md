@@ -28,10 +28,17 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 > 名单里填规范值、中文名或英文显示名都可以：忽略大小写与多余空白，中文名/英文名按别名表归一，统一落成规范值。
 > 其他写法（拼写错误、留空、自造部门名）按空字符串处理，该学助导出的部门列为空，不会静默保留错值。
 > `students` 记录本身保持原样，归一化只发生在落库与导出。
-> 新增或重命名部门：同时修改三处 `DEPARTMENTS` 与 `DEPARTMENT_ALIASES`（`miniprogram/config/constants.js`、`cloudfunctions/submitForm/constants.js`、`cloudfunctions/calculateMonthly/constants.js`）。云函数无法跨目录引用小程序代码，因此保留副本，`npm test` 会校验三处一致。
+> 新增或重命名部门：同时修改 `DEPARTMENTS` 与 `DEPARTMENT_ALIASES` 的**全部副本**——
+> `miniprogram/config/constants.js`、`cloudfunctions/submitForm/constants.js`、
+> `cloudfunctions/calculateMonthly/constants.js`、
+> `cloudfunctions/getSubmissions/departments.js` 与 `cloudfunctions/webGetSubmissions/departments.js`（这两份必须逐字节相同）。
+> 中文名表 `DEPARTMENT_LABELS` 另有 `cloudfunctions/exportData/constants.js` 与 `webExportData/constants.js` 两份副本。
+> 云函数无法跨目录引用小程序代码，因此保留副本，**`npm test` 会逐项校验各处一致**——漏改一处就会红。
 > 提交时把当时的部门写进 `submissions` 快照：已截止或已统计的月份，之后改名单不影响导出；但表单仍开放时学助重新提交会覆盖该月快照，此时改名会让同一个月出现新旧两种写法。
 > 存量名单（新增字段之前导入的记录）没有 `department`，需要在云控制台补录；新增该列之前的历史提交也没有部门快照，导出时该列为空。
-> 小程序页面当前不展示、也不按部门筛选；部门只影响导出。
+> **「填报情况」页会显示部门**（小程序端与 Web 端都有这一列）：展示文本由云函数按映射表算好下发（`departmentText`），
+> 所以名单里写 `Multimedia_Center` 这种大小写变体，页面显示的是「多媒体中心」而不是原值；
+> 枚举外的旧值（如 `CPRO`）原样显示，方便人工发现。
 
 | 规范值（推荐直接填这个） | 中文名 | 英文显示名 |
 | --- | --- | --- |
@@ -93,14 +100,37 @@ Web 管理端（未登录模式 + 自建凭据）落地时同样遵守这两条�
    → webSession（票据换身份，网页刷新后恢复登录态）
 ```
 
+管理端功能由**另一套同名的 `web*` 云函数**提供，与小程序端并列（不是给原函数开两个身份通道）：
+
+| 小程序端（`getWXContext`） | Web 端（票据） |
+| --- | --- |
+| `listForms` | `webListForms` |
+| `createMonthlyForm` | `webCreateMonthlyForm` |
+| `getSubmissions` | `webGetSubmissions` |
+| `exportData` | `webExportData` |
+
+**必须分开命名**：安全规则是按函数名放行的，`web*` 需要 `"invoke": true`，一旦让老师函数也落到这条规则下，
+未登录访客就能调到它们，进而继承实例里残留的 `WX_OPENID`。分开命名是这套设计成立的前提。
+
 - 口令用 `scrypt` 加盐哈希存进 `export_accounts` 的 `webPasswordSalt` / `webPasswordHash`，**不存明文**。
 - 票据密钥来自云函数环境变量 **`WEB_TOKEN_SECRET`**（至少 16 字符）。**取不到就拒绝服务**，绝不退回默认值。
-  三个 `web*` 函数都要配这个变量。
+  **七个 `web*` 函数都要配，且必须是同一个值**（`webLogin` 签发、其余验签，值不一致会全部失败）；
+  测试环境与正式环境各用独立密钥。
 - 登录失败一律回同一句提示（未激活 / 密码错 / 工号错 / 账户不存在），避免被拿来枚举账户。
-- `webauth.js` 在三个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
+- `webauth.js` 在七个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
   `getWXContext()`**（未登录模式下那是残留身份）。
+- 两边必须给出**完全一样**的业务结果，所以纯逻辑抽成共享模块、各存一份副本、由测试校验：
+  `rows.js`（填报进度口径，`getSubmissions` ↔ `webGetSubmissions` ↔ `webExportData`）、
+  `departments.js`（部门枚举/别名/中文名，同上三处）、
+  `constants.js`（费率表，`exportData` ↔ `webExportData`）。
+  测试不只比对副本字节，还**用同一份数据跑两端、断言产物完全相同**。
+  唯一的例外是**导出表格的版式**：Web 端出的是横向统计表，版式逻辑另起一份
+  （`webExportData/pivot.js`），只有进度口径仍与小程序端同源，详见「导出要求」。
 
 前端在 `web/`（React + Vite + TypeScript）：`npm run dev` 起本地，`npm run build` 出 `dist/` 传到静态网站托管。
+全站外观由 `web/src/components/AppShell.tsx` + `web/src/index.css` 统一提供：顶部紫色 header（`--brand: #732160`）
++ 左侧边栏。侧边栏只是「当前在哪一页」的**指示器**（由 `active` prop 决定高亮项），条目不可点击、不做跳转；
+页面切换仍由 `App.tsx` 的 `view` 状态负责，新页面只要把内容包进 `<AppShell active="...">` 就自动继承这套外观。
 Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js`），
 加载后在 `window.cloud` 上；用 `new cloud.Cloud({ identityless: true, resourceAppid, resourceEnv })` + `init()`。
 
@@ -108,10 +138,26 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 
 > 1. 开启**未登录模式**：云开发控制台 → 设置 → 全局设置/权限设置。云环境默认禁止未登录访问。
 > 2. 数据库/存储权限必须用**安全规则**配置，不能用「简易权限配置」——否则未登录用户访问不了云资源。
-> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给 `webBind` / `webLogin` / `webSession`
->    加 `"invoke": true`。未登录模式下安全规则里的 `auth` 为空。
+> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给七个 `web*` 函数加 `"invoke": true`：
+>
+> ```json
+> {
+>   "*":                    { "invoke": "auth != null" },
+>   "webBind":              { "invoke": true },
+>   "webLogin":             { "invoke": true },
+>   "webSession":           { "invoke": true },
+>   "webListForms":         { "invoke": true },
+>   "webCreateMonthlyForm": { "invoke": true },
+>   "webGetSubmissions":    { "invoke": true },
+>   "webExportData":        { "invoke": true }
+> }
+> ```
+>
+> `listForms` / `createMonthlyForm` / `exportData` / `getSubmissions` **绝对不要**加进来。
+> 未登录模式下安全规则里的 `auth` 为空，所以 `web*` 必须显式放行。
 >
 > 未登录模式**不会**调用 `cloudbase_auth` 云函数（那是公众号登录态才需要的），本项目不需要实现它。
+
 
 
 ### 月度表单
@@ -214,3 +260,30 @@ else :
 - 只写申报过的项目：表单按模板整表提交，参与数与统筹数全为 0 的行不写进明细；月结补零的人（`projectRows` 为空）没有明细行。
 - `折算工时` = 参与数 × 参与费率 + 统筹数 × 统筹费率，费率见「项目工时统计表」，口径与 `submitForm` 计算 `projectHours` 时一致。
 - 标「按实际」的项目（接待活动、管理项目）没有费率，该格留空，不写成 0，避免被误读成「没有工时」。
+
+#### Web 管理端导出（版式与小程序端**不同**）
+
+网页端导出的是给老师横向查看的统计表 `Year_Month_Day学助工时统计表.xlsx`，**单个工作表**
+（表名 = 表单月份）。版式由 `cloudfunctions/webExportData/pivot.js` 决定（纯逻辑、可测），
+`workbook.js` 只负责用 exceljs 画出来：
+
+| 行 | 内容 |
+| -- | ---- |
+| 1 | 大标题 `CPRO学助工时统计表`（`A1:E1` 合并） |
+| 2 | `月份` + `2026年10月`（`B2:C2` 合并）、`填报情况` + `名单 N 人：已提交 X，待提交 Y，未绑定 Z`（`E2:X2` 合并） |
+| 3–4 | 两行表头：`学助姓名/学号/部门/有效工时/值班工时` 纵向合并；每个有费率的项目横向合并后拆 `统筹`/`参与` 两列；最右两列 `项目名称`/`额外工时申诉` 纵向合并 |
+| 5 起 | 一人一行；已提交（含月结补零）写数字，未提交的整行合并成一格写 `待提交` / `未绑定` |
+
+- 项目列只列**有数字费率**的项目（「按实际/待定」的接待活动、管理项目没有列），顺序与
+  `miniprogram/config/constants.js` 的 `PROJECT_ROWS` 一致；`projectRows.js` 是它的副本，测试逐项比对。
+- 最右两列是表单第 5、6 题的自由文本（`项目名称`、`额外工时申诉`），跟在项目明细之后，
+  表头纵向合并；没填就留空，不写空字符串单元格。
+- **名单里的所有部门都会导出**（含未绑定的人）：按部门分块，同部门且多于一人时「部门」列纵向合并；
+  部门显示为「中文 英文」（如 `行政与数据 Administration and Data`），枚举外的旧值（如 `CPRO`、`图书馆`）
+  原样输出并各自成块，不会被并进同一个合并单元格。
+- 外观：第 3、4 行表头用品牌紫 `#732160` 底色 + 白色加粗居中，第 3 行起整片表格区域逐格细边框
+  （合并区域逐格上色/描边，否则合并块会缺色缺边），大标题加粗放大。样式参数集中在 `pivot.js` 的 `STYLE`。
+- **数据口径仍与小程序端同源**：绑定/提交/补零判定与汇总走 `rows.js` 副本，
+  所以第 2 行的填报情况与网页「填报情况」页永远一致，不同的只有版式。
+- 依赖 `exceljs`（见 `cloudfunctions/webExportData/package.json`），部署时必须选「云端安装依赖」。
+  测试里用 `tests/helpers/exceljs-stub.js` 顶替，`npm test` 仍然零依赖。

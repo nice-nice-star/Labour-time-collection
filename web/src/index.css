@@ -1,29 +1,37 @@
 :root {
   color-scheme: light;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  /* —— 品牌色：与校方后台一致的紫色 —— */
+  --brand: #732160;
+  --brand-dark: #5b194c;
+  --brand-soft: #f4e9f2;
+  --brand-line: #e0c9dc;
+
+  /* —— 中性色 —— */
+  --bg: #f4f5f7;
   --border: #dfe5ea;
   --muted: #6b7683;
+  --text: #1f2329;
+
+  --header-h: 56px;
+  --sidebar-w: 236px;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f3f6f8;
-  color: #1f2329;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
 }
 
-.card {
-  width: 100%;
-  max-width: 360px;
-  margin: 24px;
-  padding: 28px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgb(31 35 41 / 6%);
+#root {
+  min-height: 100vh;
 }
 
 h1 {
@@ -53,27 +61,35 @@ input {
   margin-bottom: 16px;
   padding: 10px 12px;
   font-size: 15px;
+  font-family: inherit;
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
   outline: none;
 }
 
 input:focus {
-  border-color: #4a90d9;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(115 33 96 / 12%);
 }
 
 button {
-  padding: 11px;
-  font-size: 15px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-family: inherit;
   color: #fff;
-  background: #2f7dd1;
+  background: var(--brand);
   border: none;
   border-radius: 8px;
   cursor: pointer;
 }
 
+button:hover:not(:disabled) {
+  background: var(--brand-dark);
+}
+
 button:disabled {
-  background: #9db9d6;
+  background: #c4aec0;
   cursor: default;
 }
 
@@ -82,8 +98,14 @@ button.link {
   margin-top: 12px;
   padding: 6px;
   font-size: 13px;
-  color: #2f7dd1;
+  color: var(--brand);
   background: none;
+}
+
+button.link:hover:not(:disabled) {
+  color: var(--brand-dark);
+  background: none;
+  text-decoration: underline;
 }
 
 .error,
@@ -102,4 +124,359 @@ button.link {
 .notice {
   color: #1c6b3c;
   background: #e9f6ee;
+}
+
+/* ============================================================
+   整体骨架：顶部紫色 header + 左侧边栏（当前页面指示器）+ 内容区
+   ============================================================ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--header-h);
+  padding: 0 20px;
+  color: #fff;
+  background: var(--brand);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-logo {
+  display: block;
+  width: auto;
+  height: 30px;
+}
+
+.app-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-header-right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-user {
+  font-size: 14px;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
+button.app-logout {
+  padding: 6px 13px;
+  font-size: 13px;
+  color: #fff;
+  background: rgb(255 255 255 / 14%);
+  border: 1px solid rgb(255 255 255 / 40%);
+  border-radius: 6px;
+}
+
+button.app-logout:hover:not(:disabled) {
+  background: rgb(255 255 255 / 26%);
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-height: 0;
+}
+
+/* 侧边栏只用来说明「当前在哪一页」，条目本身不可点击、不做跳转 */
+.app-sidebar {
+  flex: none;
+  width: var(--sidebar-w);
+  padding: 18px 12px;
+  background: #fff;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-group {
+  margin: 0 0 10px;
+  padding: 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  font-size: 14px;
+  color: #48505a;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  cursor: default;
+  user-select: none;
+}
+
+.sidebar-item::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background: #c3cad2;
+  border-radius: 2px;
+}
+
+.sidebar-item.active {
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-left-color: var(--brand);
+}
+
+.sidebar-item.active::before {
+  background: var(--brand);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 32px;
+}
+
+/* 登录页没有侧边栏，内容居中 */
+.app-main.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+/* ============================================================
+   面板（白底内容块）
+   ============================================================ */
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgb(31 35 41 / 5%);
+  overflow: hidden;
+}
+
+.panel--narrow {
+  max-width: 560px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-head h1 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.panel-head .helper {
+  margin: 4px 0 0;
+}
+
+.panel-body {
+  padding: 16px 20px 20px;
+}
+
+.head-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.head-actions button {
+  padding: 9px 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+button.ghost {
+  color: var(--brand);
+  background: #fff;
+  border: 1px solid var(--brand-line);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--brand-soft);
+}
+
+button.ghost:disabled {
+  color: #b9a5b5;
+  background: #f7f7f8;
+  border-color: var(--border);
+}
+
+/* 登录页卡片 */
+.card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgb(31 35 41 / 8%);
+}
+
+.card h1 {
+  color: var(--brand);
+}
+
+/* ============================================================
+   表格与表单控件
+   ============================================================ */
+
+table {
+  width: 100%;
+  margin-bottom: 8px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 11px 14px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: #fafbfc;
+}
+
+th:first-child,
+td:first-child {
+  padding-left: 0;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 0;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover td {
+  background: #faf7f9;
+}
+
+/* 姓名列可以换行，其余列保持单行 */
+td:first-child {
+  white-space: normal;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.row-actions button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #7a5b00;
+  background: #fdf3d6;
+  border-radius: 4px;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.filter label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.filter input {
+  width: 220px;
+  max-width: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+
+@media (max-width: 820px) {
+  .app-body {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    padding: 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-group {
+    margin-bottom: 8px;
+  }
+
+  .sidebar-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .sidebar-item {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+  }
+
+  .sidebar-item.active {
+    border-color: var(--brand);
+  }
+
+  .app-main {
+    padding: 16px;
+  }
 }

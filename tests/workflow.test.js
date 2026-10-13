@@ -337,7 +337,19 @@ test('匿名调用（未登录来源）拿不到老师权限，不写库也不�
 // 票据是无状态 HMAC，密钥来自云函数环境变量 WEB_TOKEN_SECRET。
 
 const WEB_SECRET = 'test-secret-at-least-16-chars'
-const WEB_FUNCTIONS = ['webBind', 'webLogin', 'webSession']
+const WEB_FUNCTIONS = [
+  'webBind', 'webLogin', 'webSession',
+  'webListForms', 'webCreateMonthlyForm', 'webGetSubmissions', 'webExportData'
+]
+// 小程序端与 Web 端必须共用同一份纯逻辑，否则两边口径会漂移
+const SHARED_MODULES = [
+  ['rows.js', 'getSubmissions', 'webGetSubmissions'],
+  ['departments.js', 'getSubmissions', 'webGetSubmissions'],
+  // Web 统计表导出另起了一套版式（pivot.js），但进度口径与部门映射仍与「填报情况」页同源
+  ['rows.js', 'webGetSubmissions', 'webExportData'],
+  ['departments.js', 'webGetSubmissions', 'webExportData'],
+  ['constants.js', 'exportData', 'webExportData']
+]
 process.env.WEB_TOKEN_SECRET = WEB_SECRET
 
 function webFixture() {
@@ -467,6 +479,291 @@ test('Web 与小程序的身份来源互不越界，且 webauth.js 各副本一�
   for (const fn of GUARDED_FUNCTIONS) {
     assert.ok(codeOnly(read('../cloudfunctions', fn, 'index.js')).includes('getWXContext'), `${fn} 不应改读别的身份来源`)
   }
+  // 小程序端与 Web 端共用的纯逻辑副本必须逐字节一致
+  for (const [file, mini, web] of SHARED_MODULES) {
+    assert.equal(
+      read('../cloudfunctions', web, file),
+      read('../cloudfunctions', mini, file),
+      `${file} 两端副本不一致: ${mini} vs ${web}`
+    )
+  }
+})
+
+test('Web 数据接口：无票据或票据无效一律拒绝，有效票据才放行', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+
+  const calls = [
+    ['webListForms', {}],
+    ['webCreateMonthlyForm', { month: '2026-11' }],
+    ['webGetSubmissions', { formId: 'f' }],
+    ['webExportData', { formId: 'f' }]
+  ]
+  for (const [fn, base] of calls) {
+    for (const bad of [undefined, '', 'garbage', `${token}x`, token.split('.')[0]]) {
+      const res = await h.call(fn, undefined, { ...base, token: bad })
+      assert.equal(res.ok, false, `${fn} 放行了无效票据: ${bad}`)
+      // 失败时不得泄露任何数据
+      assert.equal(res.forms, undefined)
+      assert.equal(res.rows, undefined)
+      assert.equal(res.url, undefined)
+    }
+  }
+  assert.equal(h.uploads.length, 0, '无效票据不得触发导出上传')
+  assert.equal(h.tables.monthly_forms.length, 1, '无效票据不得新建表单')
+
+  // 有效票据放行
+  assert.equal((await h.call('webListForms', undefined, { token })).ok, true)
+  assert.equal((await h.call('webGetSubmissions', undefined, { formId: 'f', token })).ok, true)
+  assert.equal((await h.call('webExportData', undefined, { formId: 'f', token })).ok, true)
+  assert.equal((await h.call('webCreateMonthlyForm', undefined, { month: '2026-11', token })).ok, true)
+  assert.equal(h.tables.monthly_forms.length, 2)
+})
+
+test('Web 数据接口不吃残留的微信身份', async () => {
+  const h = createHarness(webFixture())
+  // 老师先用小程序调用，实例里留下残留身份
+  assert.equal((await h.call('listForms', 'wx-teacher')).ok, true)
+  // 不带票据的 Web 调用不得因为残留身份而成功
+  for (const fn of ['webListForms', 'webGetSubmissions', 'webExportData']) {
+    assert.equal((await h.call(fn, undefined, { formId: 'f' })).ok, false, `${fn} 被残留身份放行了`)
+  }
+  assert.equal(h.uploads.length, 0)
+})
+
+test('Web 导出：一人一行 × 一项目一列的统计表，标题与合并单元格齐全', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-b', answer)
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  await h.call('calculateMonthly', undefined)
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+
+  const res = await h.call('webExportData', undefined, { formId: 'f', token })
+  assert.equal(res.ok, true)
+  assert.equal(res.filename, '2026_10_15学助工时统计表.xlsx')
+
+  const sheet = h.workbooks[0].sheets[0]
+  assert.equal(sheet.name, '2026-10')
+  const rows = sheet.rows.map(r => r.values)          // exceljs 桩按 Row 存，测试里取纯值
+  const cell = (r, c) => rows[r - 1][c - 1]
+
+  // 单张表：标题行 + 月份/填报情况行 + 两行表头 + 3 名学助（含未绑定的人）
+  assert.equal(rows.length, 7)
+  assert.equal(cell(1, 1), 'CPRO学助工时统计表')
+  assert.equal(cell(2, 1), '月份')
+  assert.equal(cell(2, 2), '2026年10月')
+  assert.equal(cell(2, 4), '填报情况')
+  // 汇总口径与「填报情况」页同一份 rows.js/summarize
+  assert.equal(cell(2, 5), '名单 3 人：已提交 1，待提交 1，未绑定 1')
+
+  // 表头：5 个基础列 + 19 个项目列 + 末尾 2 列自由文本；有统筹费率的项目拆成「统筹/参与」两列
+  assert.deepEqual(rows[2].slice(0, 5), ['学助姓名', '学号', '部门', '有效工时', '值班工时'])
+  assert.equal(cell(3, 6), '新闻稿/通讯（800字内）')
+  assert.equal(cell(4, 6), '参与')
+  assert.equal(cell(3, 7), '人物专访（采访+成稿）')
+  assert.equal(cell(4, 7), '统筹')
+  assert.equal(cell(4, 8), '参与')
+  assert.equal(cell(3, 23), '集体活动')
+  assert.equal(cell(4, 24), '参与')
+  assert.equal(cell(3, 25), '项目名称')
+  assert.equal(cell(3, 26), '额外工时申诉')
+  assert.equal(cell(4, 25), undefined)
+  assert.equal(rows[2].length, 26)
+
+  // 合并范围：大标题、月份值、填报情况、基础列与末尾两列的纵向表头、项目组表头
+  const verticalHeaders = ['A3:A4', 'B3:B4', 'C3:C4', 'D3:D4', 'E3:E4', 'Y3:Y4', 'Z3:Z4']
+  for (const range of ['A1:E1', 'B2:C2', 'E2:Z2', 'G3:H3', 'W3:X3', ...verticalHeaders]) {
+    assert.ok(sheet.merges.includes(range), `缺少合并 ${range}`)
+  }
+
+  // 数据行：已提交写数字（值班工时由字符串转数字），未绑定整行合并成状态文字
+  const rowOf = name => rows.find(r => r[0] === name)
+  const yi = rowOf('主管乙')
+  assert.equal(yi[3], 40)                       // 有效工时
+  assert.equal(yi[4], 30)                       // 值班工时：'30' → 30
+  assert.equal(yi[22], 0)                       // 集体活动·统筹
+  assert.equal(yi[23], 2)                       // 集体活动·参与
+  assert.equal(yi[24], '测试项目')               // 第 5 题原样落到「项目名称」
+  assert.equal(yi[25], undefined)               // 第 6 题没填 → 留空，不写空字符串
+
+  // 月结补零的人按 0 计入，不显示成「待提交」
+  const jia = rowOf('学助甲')
+  assert.equal(jia[3], 0)
+  assert.equal(jia[4], 0)
+  assert.equal(jia[23], 0)
+
+  const bing = rowOf('待绑定丙')
+  assert.equal(bing[3], '未绑定')
+  assert.equal(bing[4], undefined)
+  assert.ok(sheet.merges.includes('D7:Z7'), '未绑定行应整行合并到最后一列')
+
+  // 同一部门的人合并「部门」列；部门显示为「中文 英文」
+  assert.equal(cell(5, 3), '行政与数据 Administration and Data')
+  assert.equal(cell(6, 3), undefined)
+  assert.ok(sheet.merges.includes('C5:C6'), '同部门的部门列应纵向合并')
+
+  // 表头：品牌紫底 + 白字加粗居中；合并块里每一格都要上色，不能只染左上角
+  assert.equal(sheet.getCell(3, 1).fill.fgColor.argb, 'FF732160')
+  assert.equal(sheet.getCell(3, 1).font.bold, true)
+  assert.equal(sheet.getCell(3, 1).font.color.argb, 'FFFFFFFF')
+  assert.equal(sheet.getCell(3, 1).alignment.horizontal, 'center')
+  assert.equal(sheet.getCell(4, 8).fill.fgColor.argb, 'FF732160')   // G3:H3 合并块右半格
+  assert.equal(sheet.getCell(4, 24).fill.fgColor.argb, 'FF732160')  // W3:X3 合并块右半格
+
+  // 表体（含表头）逐格细边框；标题行与填报情况行不描边
+  assert.equal(sheet.getCell(3, 1).border.top.style, 'thin')
+  assert.equal(sheet.getCell(6, 1).border.top.style, 'thin')
+  assert.equal(sheet.getCell(7, 24).border.bottom.style, 'thin')
+  assert.equal(sheet.getCell(7, 4).border.bottom.style, 'thin')     // 合并状态格也要描边
+  assert.equal(sheet.getCell(2, 1).border, undefined)
+  assert.equal(sheet.getCell(1, 1).border, undefined)
+
+  // 大标题放大加粗、用品牌紫
+  assert.equal(sheet.getCell(1, 1).font.bold, true)
+  assert.equal(sheet.getCell(1, 1).font.size, 14)
+  assert.equal(sheet.getCell(1, 1).font.color.argb, 'FF732160')
+
+  // 列宽/行高由 pivot.js 给定，且列数与表头一致
+  assert.equal(sheet.cols.length, 26)
+  assert.ok(sheet.cols[0].width > 0)
+  assert.ok(sheet.cols[25].width > 0)
+  assert.equal(sheet.rows[0].height, 22)
+  assert.equal(sheet.rows[4].height, 13)
+})
+
+test('Web 统计表：名单里所有部门都会导出，未知/已移除的部门各自成块', () => {
+  const { buildPivot } = require('../cloudfunctions/webExportData/pivot')
+  const students = [
+    { name: '甲', studentId: 'S1', department: 'Public_Relations' },
+    { name: '乙', studentId: 'S2', department: 'Domestic_social_Media' },
+    { name: '丙', studentId: 'S3', department: 'domestic social media' },  // 别名写法 → 同一个部门
+    { name: '丁', studentId: 'S4', department: 'Administration_and_Data' },
+    { name: '戊', studentId: 'S5', department: '图书馆' },                 // 枚举外
+    { name: '己', studentId: 'S6', department: 'CPRO' },                   // 已从枚举移除的旧值
+    { name: '庚', studentId: 'S7' }                                        // 名单里没写部门
+  ]
+  const model = buildPivot({
+    form: { month: '2026-10' }, students, submissions: [],
+    now: new Date('2026-10-15T00:00:00Z')
+  })
+
+  // 7 个人一个不漏：部门按枚举顺序排前面，查不到枚举的各自成块排在后面
+  const labels = model.departments.map(d => d.label)
+  assert.equal(labels.length, 6)
+  assert.deepEqual(labels.slice(0, 3), [
+    '公共关系 Public Relations',
+    '国内社媒 Domestic Social Media',
+    '行政与数据 Administration and Data'
+  ])
+  assert.deepEqual(labels.slice(3).sort(), ['CPRO', '图书馆', '未设置'].sort())
+  assert.equal(model.departments.reduce((n, d) => n + d.count, 0), 7)
+  assert.equal(model.rows.length, 4 + 7)     // 标题 + 月份 + 两行表头 + 7 人
+
+  // 只有「同一部门且多于一人」才纵向合并部门列；别名写法要能并到一起
+  assert.deepEqual(model.merges.filter(m => /^C[5-9]\d*:C\d+$/.test(m)), ['C6:C7'])
+  assert.ok(model.merges.includes('D5:Z5') && model.merges.includes('D11:Z11'))
+  // 末尾两列不参与项目列的合并，只是各自纵向合并表头
+  assert.ok(model.merges.includes('Y3:Y4') && model.merges.includes('Z3:Z4'))
+})
+
+test('Web 统计表的项目列与小程序端 PROJECT_ROWS 同源：顺序、文案、单一/双列都不许漂移', () => {
+  const { PROJECT_ROWS, PROJECT_HOURS } = require('../miniprogram/config/constants')
+  const webRows = require('../cloudfunctions/webExportData/projectRows')
+  const { projectColumns } = require('../cloudfunctions/webExportData/pivot')
+
+  assert.deepEqual(webRows.PROJECT_ROWS, PROJECT_ROWS, 'projectRows.js 副本与小程序端不一致')
+
+  const { cols, groups } = projectColumns()
+  const withRate = PROJECT_ROWS.filter(row => PROJECT_HOURS[row.key].participant != null)
+  assert.deepEqual(groups.map(g => g.label), withRate.map(row => row.label))
+  assert.deepEqual(
+    groups.map(g => g.to - g.from + 1),
+    withRate.map(row => (PROJECT_HOURS[row.key].coordinator != null ? 2 : 1))
+  )
+  assert.deepEqual(
+    cols.map(c => c.key),
+    withRate.flatMap(row => (PROJECT_HOURS[row.key].coordinator != null ? [row.key, row.key] : [row.key]))
+  )
+  // 「按实际/待定」的接待活动、管理项目没有列，但仍然留在 PROJECT_ROWS 里
+  assert.equal(groups.length, 12)
+  assert.equal(cols.length, 19)
+})
+
+test('Web 统计表：部门显示为「中文 英文」，枚举外的旧值原样输出', () => {
+  const { departmentLabel, monthText } = require('../cloudfunctions/webExportData/pivot')
+  assert.equal(departmentLabel('Administration_and_Data'), '行政与数据 Administration and Data')
+  assert.equal(departmentLabel('行政与数据'), '行政与数据 Administration and Data')
+  assert.equal(departmentLabel('multimedia center'), '多媒体中心 Multimedia Center')
+  assert.equal(departmentLabel('Journalist_News_Center'), '大学新闻中心记者 Journalist, News Center')
+  assert.equal(departmentLabel(''), '未设置')
+  assert.equal(departmentLabel('CPRO'), 'CPRO')     // 已移除的旧部门原样输出，不静默清空
+  assert.equal(monthText('2026-10'), '2026年10月')
+})
+
+test('口径一致：Web 填报进度与小程序完全一致', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-a', answer)
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+
+  const viaMini = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  const viaWeb = await h.call('webGetSubmissions', undefined, { formId: 'f', token })
+
+  assert.equal(viaWeb.ok, true)
+  assert.deepEqual(viaWeb.form, viaMini.form)
+  assert.deepEqual(viaWeb.rows, viaMini.rows)
+  assert.deepEqual(viaWeb.summary, viaMini.summary)
+  assert.deepEqual(viaWeb.summary, { total: 3, bound: 2, submitted: 1, pending: 1, unbound: 1 })
+})
+
+test('部门映射：云函数副本与小程序端的枚举、别名、归一化结果完全一致', () => {
+  const dir = require('../cloudfunctions/getSubmissions/departments')
+  assert.deepEqual(dir.DEPARTMENTS, DEPARTMENTS)
+  assert.deepEqual(dir.DEPARTMENT_ALIASES, DEPARTMENT_ALIASES)
+  assert.deepEqual(dir.DEPARTMENT_LABELS, DEPARTMENT_LABELS)
+
+  // 归一化与展示文本逐项比对：枚举、大小写变体、别名、错值、空值、原型链键
+  const samples = [
+    ...DEPARTMENTS,
+    ...DEPARTMENTS.map(d => d.toUpperCase()),
+    ...DEPARTMENTS.map(d => d.toLowerCase()),
+    ...Object.keys(DEPARTMENT_ALIASES),
+    'Multimedia_Center', 'University gift shop', 'ＡＤＭＩＮＩＳＴＲＡＴＩＯＮ',
+    '图书馆', 'CPRO', '', '   ', null, undefined, 0, 'constructor', 'toString'
+  ]
+  for (const value of samples) {
+    const resolved = resolveDepartment(value)
+    const raw = String(value == null ? '' : value)
+    assert.equal(dir.resolveDepartment(value), resolved, `归一化不一致: ${value}`)
+    assert.equal(dir.departmentText(value), DEPARTMENT_LABELS[resolved] || raw || '未设置', `展示文本不一致: ${value}`)
+  }
+
+  // 网页上暴露出来的那条：名单写成大写 C 也要归一到规范值并显示中文
+  assert.equal(dir.resolveDepartment('Multimedia_Center'), 'Multimedia_center')
+  assert.equal(dir.departmentText('Multimedia_Center'), '多媒体中心')
+})
+
+test('填报情况：部门展示文本由服务端归一化，未提交者的名单原值也转成中文', async () => {
+  const seed = fixture()
+  seed.students[1].department = 'Multimedia_Center'   // 未提交者：名单里的大小写写法
+  const h = createHarness(seed)
+  await h.call('submitForm', 'wx-a', answer)
+
+  const res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  const yi = res.rows.find(r => r.name === '主管乙')
+  assert.equal(yi.submitted, false)
+  assert.equal(yi.department, 'Multimedia_Center')     // 原值照旧下发，便于排查名单写法
+  assert.equal(yi.departmentText, '多媒体中心')          // 展示文本已归一化
+  // 已提交者取提交时快照（规范值）再转中文
+  assert.equal(res.rows.find(r => r.name === '学助甲').departmentText, '行政与数据')
+  // 枚举外的历史值原样显示，不静默清空
+  const legacy = fixture()
+  legacy.students[0].department = 'CPRO'
+  const h2 = createHarness(legacy)
+  const res2 = await h2.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  assert.equal(res2.rows.find(r => r.name === '学助甲').departmentText, 'CPRO')
 })
 
 test('老师创建新月表单并更新截止时间，不重复创建', async () => {

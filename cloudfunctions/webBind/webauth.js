@@ -69,4 +69,21 @@ function verifyToken(token, secret, now = Date.now()) {
   return { sub: body.sub, exp: body.exp }
 }
 
-module.exports = { readSecret, newSalt, hashPassword, verifyPassword, signToken, verifyToken, TOKEN_TTL_MS }
+// web* 数据接口的统一入口：拿 event.token 换老师账户，失败返回 null。
+// 密钥缺失、票据非法、账户不存在或被清了密码，一律当作未登录——外部只看到一种结果。
+async function requireExport(event, db) {
+  const secret = readSecret(process.env)
+  if (!secret) return null
+  const payload = verifyToken((event || {}).token, secret)
+  if (!payload) return null
+  // 用 where 而不是 doc：账户被删除时返回未登录，而不是抛异常
+  const res = await db.collection('export_accounts').where({ _id: payload.sub }).limit(1).get()
+  const account = res.data[0]
+  if (!account || !account.webPasswordHash) return null
+  return account
+}
+
+module.exports = {
+  readSecret, newSalt, hashPassword, verifyPassword,
+  signToken, verifyToken, requireExport, TOKEN_TTL_MS
+}

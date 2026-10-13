@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import AppShell from '../components/AppShell'
 import { bindWebAccount, loginWebAccount } from '../lib/api'
 import type { WebUser } from '../lib/api'
 import { saveToken } from '../lib/session'
@@ -53,39 +54,41 @@ export default function LoginPage({ onLoggedIn }: Props) {
   }
 
   return (
-    <div className="card">
-      <h1>学助工时管理后台</h1>
-      <p className="helper">
-        {mode === 'login' ? '请用老师账户登录' : '首次使用请先激活：姓名与工号需和名单完全一致'}
-      </p>
+    <AppShell sidebar={false}>
+      <div className="card">
+        <h1>学助工时管理后台</h1>
+        <p className="helper">
+          {mode === 'login' ? '请用老师账户登录' : '首次使用请先激活：姓名与工号需和名单完全一致'}
+        </p>
 
-      <form onSubmit={submit}>
-        <label htmlFor="name">姓名</label>
-        <input id="name" value={name} onChange={e => setName(e.target.value)} autoComplete="username" />
+        <form onSubmit={submit}>
+          <label htmlFor="name">姓名</label>
+          <input id="name" value={name} onChange={e => setName(e.target.value)} autoComplete="username" />
 
-        <label htmlFor="exportId">工号</label>
-        <input id="exportId" value={exportId} onChange={e => setExportId(e.target.value)} autoComplete="username" />
+          <label htmlFor="exportId">工号</label>
+          <input id="exportId" value={exportId} onChange={e => setExportId(e.target.value)} autoComplete="username" />
 
-        <label htmlFor="password">密码</label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-        />
+          <label htmlFor="password">密码</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          />
 
-        {error && <p className="error" role="alert">{error}</p>}
-        {notice && <p className="notice" role="status">{notice}</p>}
+          {error && <p className="error" role="alert">{error}</p>}
+          {notice && <p className="notice" role="status">{notice}</p>}
 
-        <button type="submit" disabled={busy}>
-          {busy ? '处理中…' : mode === 'login' ? '登录' : '激活账户'}
+          <button type="submit" disabled={busy}>
+            {busy ? '处理中…' : mode === 'login' ? '登录' : '激活账户'}
+          </button>
+        </form>
+
+        <button type="button" className="link" onClick={() => switchMode(mode === 'login' ? 'activate' : 'login')}>
+          {mode === 'login' ? '首次使用？激活账户' : '已有密码？返回登录'}
         </button>
-      </form>
-
-      <button type="button" className="link" onClick={() => switchMode(mode === 'login' ? 'activate' : 'login')}>
-        {mode === 'login' ? '首次使用？激活账户' : '已有密码？返回登录'}
-      </button>
-    </div>
+      </div>
+    </AppShell>
   )
 }

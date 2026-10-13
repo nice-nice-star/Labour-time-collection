@@ -138,3 +138,9 @@ npm run test:fixtures
 该页加入姓名搜索框后运行 `npm test`：33 项通过、0 失败、5 项 TODO。过滤逻辑抽到 `miniprogram/utils/search.js`（纯函数，与 `utils/calc.js` 同样可单测），新增 1 项覆盖中文/英文子串、大小写、首尾空白、空关键词、无匹配、非数组入参与「只匹配姓名不匹配部门」。搜索是纯前端过滤，不新增云函数；切换月份会清空关键词。未在真机验证输入法组合输入与长名单滚动性能。
 
 参考：[微信官方 SDK 的上下文定义](https://github.com/wechat-miniprogram/wx-server-sdk/blob/master/index.d.ts)、[微信官方云开发初始化示例](https://github.com/wechat-miniprogram/minigame-demo/blob/master/CLOUD_README.md)。
+
+
+> [!IMPORTANT]
+> 测试环境所用的环境变量（设计所有带有`web`的云函数）：
+>
+> `WEB_TOKEN_SECRET = 8088e4d4d8fde4097aa5f07387beef224d02f8afb4a0890760c25755ec6e81be`
