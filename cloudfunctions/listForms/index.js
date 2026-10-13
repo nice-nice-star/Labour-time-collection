@@ -6,7 +6,8 @@ const db = cloud.database()
 exports.main = async () => {
   const { OPENID } = cloud.getWXContext()
 
-  // 权限校验：导出账户
+  // 权限校验：导出账户。没有 openid 直接拒绝——未登录模式下的匿名调用会走到这里。
+  if (!OPENID) return { ok: false, msg: '未登录' }
   const exp = await db.collection('export_accounts').where({ openid: OPENID }).get()
   if (!exp.data.length) return { ok: false, msg: '无权限' }
 

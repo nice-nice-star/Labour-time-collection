@@ -1,4 +1,5 @@
 // miniprogram/pages/form/form.js
+const app = getApp()
 const { PROJECT_ROWS, LOCATION_OPTIONS, resolveProjectKey, normalizeProjectRows } = require('../../config/constants')
 const { calcHours } = require('../../utils/calc')
 
@@ -15,6 +16,12 @@ Page({
   },
 
   async onLoad() {
+    // 老师没有填报入口，直接进入本页会看到填不了的表单：挡回去，由首页的「查看填报情况」承担
+    if (app.globalData.role === 'export') {
+      wx.showToast({ title: '请使用「查看填报情况」', icon: 'none' })
+      setTimeout(() => wx.redirectTo({ url: '/pages/home/home' }), 600)
+      return
+    }
     await this.loadForm()
   },
 

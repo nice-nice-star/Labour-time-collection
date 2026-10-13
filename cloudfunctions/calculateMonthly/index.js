@@ -39,6 +39,8 @@ exports.main = async (event = {}) => {
           data: {
             formId: f._id, month: f.month, openid: s.openid,
             studentId: s.studentId, name: s.name, isSupervisor: !!s.isSupervisor,
+            // 自动补零不是真提交，填报进度页靠这个字段把它标成「未提交」
+            source: 'auto-zero',
             // 补零记录同样写部门，否则未提交者的部门列会与已提交者不一致
             department: resolveDepartment(s.department),
             answers: { answer1: '0', answer2: '', answer3: '', answer4: '', answer5: '', answer6: '' },

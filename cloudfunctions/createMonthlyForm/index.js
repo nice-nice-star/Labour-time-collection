@@ -8,7 +8,8 @@ exports.main = async (event) => {
   const { month, deadline } = event
   if (!month) return { ok: false, msg: '缺少月份' }
 
-  // 权限校验：必须是导出账户
+  // 权限校验：必须是导出账户。没有 openid 直接拒绝——未登录模式下的匿名调用会走到这里。
+  if (!OPENID) return { ok: false, msg: '未登录' }
   const exp = await db.collection('export_accounts').where({ openid: OPENID }).get()
   if (!exp.data.length) return { ok: false, msg: '无权限' }
 

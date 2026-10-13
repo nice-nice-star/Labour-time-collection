@@ -1,25 +1,13 @@
 // cloudfunctions/exportData/index.js
 const cloud = require('wx-server-sdk')
 const xlsx = require('node-xlsx')
-const { hoursOfRow } = require('./constants')
+const { hoursOfRow, DEPARTMENT_LABELS } = require('./constants')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
 function pad(n) { return String(n).padStart(2, '0') }
 
-// 部门规范值 → 导出用的中文名。取值来自 submissions.department（提交时或月结补零时归一化过的快照）。
 // 查不到的写法（该列上线前的历史记录、已从枚举里移除的旧部门）原样输出，不静默清空，方便人工发现。
-const DEPARTMENT_LABELS = {
-  Public_Relations: '公共关系',
-  Domestic_social_Media: '国内社媒',
-  Multimedia_center: '多媒体中心',
-  Journalist_News_Center: '大学新闻中心记者',
-  Overseas_social_Media: '海外社媒',
-  University_Gift_shop: '纪念品商店',
-  Administration_and_Data: '行政与数据',
-  Magazine_publisher: '神仙湖畔杂志社'
-}
-
 function departmentText(value) {
   if (!value) return ''
   return Object.prototype.hasOwnProperty.call(DEPARTMENT_LABELS, value)
@@ -31,7 +19,8 @@ exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext()
   const { formId } = event
 
-  // 权限校验：导出账户
+  // 权限校验：导出账户。没有 openid 直接拒绝——未登录模式下的匿名调用会走到这里。
+  if (!OPENID) return { ok: false, msg: '未登录' }
   const exp = await db.collection('export_accounts').where({ openid: OPENID }).get()
   if (!exp.data.length) return { ok: false, msg: '无权限' }
 

@@ -1,0 +1,17 @@
+.summary { display: flex; align-items: flex-end; margin-top: 32rpx; padding-top: 24rpx; border-top: 1rpx solid #edf1f4; }
+.summary-cell { flex: 1; text-align: center; }
+.summary-number { display: block; font-size: 42rpx; line-height: 1.2; font-weight: 600; }
+.summary-cell .helper { margin-top: 4rpx; }
+.search { display: flex; align-items: center; background: #f7f9fb; border: 2rpx solid #e6edf0; border-radius: 14rpx; padding: 14rpx 20rpx; margin-bottom: 20rpx; }
+.search-icon { color: #8a98a5; font-size: 30rpx; margin-right: 12rpx; }
+.search-input { flex: 1; font-size: 27rpx; height: 40rpx; line-height: 40rpx; }
+.search-clear { color: #8a98a5; font-size: 26rpx; padding: 4rpx 8rpx; margin-left: 8rpx; }
+.roster-head { display: flex; align-items: center; justify-content: space-between; color: #7a8995; font-size: 22rpx; padding-bottom: 12rpx; border-bottom: 1rpx solid #edf1f4; }
+.roster-row { display: flex; align-items: center; justify-content: space-between; padding: 22rpx 0; border-bottom: 1rpx solid #f1f5f7; }
+.roster-row:last-child { border-bottom: none; }
+.roster-main { flex: 1; min-width: 0; }
+.roster-name { display: flex; align-items: center; font-size: 29rpx; font-weight: 600; }
+.role-mark { margin-left: 12rpx; font-size: 20rpx; font-weight: 500; color: #64808c; background: #eef3f5; border-radius: 8rpx; padding: 2rpx 10rpx; }
+.roster-dept { display: block; font-size: 23rpx; color: #7a8995; margin-top: 4rpx; }
+.roster-side { text-align: right; margin-left: 20rpx; flex-shrink: 0; }
+.roster-hours { display: block; font-size: 32rpx; font-weight: 600; margin-top: 8rpx; }

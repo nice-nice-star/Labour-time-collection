@@ -1,0 +1,49 @@
+<view class="page">
+  <view class="page-heading"><text class="eyebrow">SUBMISSION STATUS</text><text class="page-title">填报情况总览</text><text class="page-desc">查看本月填报进度与每人的有效工时。</text></view>
+
+  <view wx:if="{{loading}}" class="card state-card"><text class="state-title">正在加载表单</text><text class="helper">正在获取月度记录。</text></view>
+  <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">加载失败</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForms">重新加载</button></view>
+  <view wx:elif="{{!forms.length}}" class="card state-card"><text class="state-title">还没有月度表单</text><text class="helper">创建表单并收集记录后，即可在这里查看填报情况。</text></view>
+  <block wx:else>
+    <view class="card">
+      <text class="form-label field-first">选择月份</text>
+      <picker range="{{formNames}}" value="{{formIndex}}" bindchange="onForm" disabled="{{rowsLoading}}">
+        <view class="picker"><text>{{formNames[formIndex]}}</text><text class="chevron">›</text></view>
+      </picker>
+      <view wx:if="{{summary}}" class="summary">
+        <view class="summary-cell"><text class="summary-number">{{summary.submitted}} / {{summary.total}}</text><text class="helper">已填报</text></view>
+        <view class="summary-cell"><text class="summary-number">{{summary.pending}}</text><text class="helper">未提交</text></view>
+        <view class="summary-cell"><text class="summary-number">{{summary.unbound}}</text><text class="helper">未绑定</text></view>
+      </view>
+      <text wx:if="{{summary && summary.unbound}}" class="helper">未绑定的学助不会参与月结补零，导出时也不会计入。</text>
+    </view>
+
+    <view class="card">
+      <view class="section-heading"><text class="section-title">每人有效工时</text><text wx:if="{{form}}" class="badge">{{form.statusLabel}}</text></view>
+      <view wx:if="{{rowsLoading}}" class="helper">正在加载填报情况…</view>
+      <view wx:elif="{{!rows.length}}" class="helper">名单里还没有学助。</view>
+      <view wx:else>
+        <view class="search">
+          <text class="search-icon">⌕</text>
+          <input class="search-input" value="{{keyword}}" bindinput="onSearch" placeholder="搜索姓名" placeholder-class="placeholder" confirm-type="search" />
+          <text wx:if="{{keyword}}" class="search-clear" bindtap="clearSearch">✕</text>
+        </view>
+        <text wx:if="{{keyword}}" class="helper">匹配 {{visibleRows.length}} / {{rows.length}} 人</text>
+        <view class="roster-head"><text>姓名 · 部门</text><text>状态 · 有效工时</text></view>
+        <view wx:if="{{!visibleRows.length}}" class="helper">没有名字包含「{{keyword}}」的学助。</view>
+        <view class="roster-row" wx:for="{{visibleRows}}" wx:key="studentId">
+          <view class="roster-main">
+            <view class="roster-name"><text>{{item.name}}</text><text class="role-mark">{{item.isSupervisor ? '主管' : '学助'}}</text></view>
+            <text class="roster-dept">{{item.departmentText}}</text>
+          </view>
+          <view class="roster-side">
+            <text class="{{item.submitted ? 'badge' : 'badge badge-muted'}}">{{item.statusLabel}}</text>
+            <text class="roster-hours">{{item.hoursText}}</text>
+          </view>
+        </view>
+      </view>
+      <text class="helper">有效工时 = min(40, 值班工时 + 项目工时)，主管先乘 1.5 再封顶，与导出 Excel 口径一致。</text>
+    </view>
+  </block>
+  <text class="footer-note">CPRO · 月度工时管理</text>
+</view>

@@ -5,7 +5,8 @@
     "pages/home/home",
     "pages/form/form",
     "pages/form-create/form-create",
-    "pages/export/export"
+    "pages/export/export",
+    "pages/submissions/submissions"
   ],
   "window": {
     "navigationBarTitleText": "学助工时收集",

@@ -77,4 +77,18 @@ function hoursOfRow(key, counts) {
   return known ? total : null
 }
 
-module.exports = { PROJECT_KEYS, PROJECT_HOURS, rateOf, hoursOfRow }
+// 部门规范值 → 展示用中文名。取值来自 submissions.department（提交时或月结补零时归一化过的快照）。
+// 与 miniprogram/config/constants.js 的同名表必须一致（小程序「填报情况」页也用这张表），
+// tests/workflow.test.js 会校验两处相等。
+const DEPARTMENT_LABELS = {
+  Public_Relations: '公共关系',
+  Domestic_social_Media: '国内社媒',
+  Multimedia_center: '多媒体中心',
+  Journalist_News_Center: '大学新闻中心记者',
+  Overseas_social_Media: '海外社媒',
+  University_Gift_shop: '纪念品商店',
+  Administration_and_Data: '行政与数据',
+  Magazine_publisher: '神仙湖畔杂志社'
+}
+
+module.exports = { PROJECT_KEYS, PROJECT_HOURS, rateOf, hoursOfRow, DEPARTMENT_LABELS }

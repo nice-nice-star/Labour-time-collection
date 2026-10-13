@@ -49,10 +49,70 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 ### 其他信息
 > 功能（权限）
 > 需要集成微信登陆功能（所有帐户）
-> 填写表单（所有用户）
+> 填写表单（学助账户，老师首页看不到这个入口）
+> 查看填报情况（导出账户，只显示进度与每人有效工时，支持按姓名搜索，不显示学助填写的内容）
 > 构建月度表单（导出账户）
 > 表单截至后自动计算（后台自动操作）
 > 导出（导出账户）
+
+首页按角色显示互斥的两个入口：学助看到「填写月度表单」，老师看到「查看填报情况」。
+`getSubmissions` 只接受导出账户，隐藏按钮不构成权限边界。
+
+### 身份与权限的真实边界（平台侧，改代码碰不到）
+
+云函数用 `cloud.getWXContext()` 取调用者身份。它读的是**云函数进程的 `process.env`**（`WX_CONTEXT_KEYS` + `WX_OPENID`），
+不是入口函数的第二个参数 `context`——微信云开发的运行时不会把身份下发到 `context.environ` 里。
+曾经按腾讯云 CloudBase 文档的 `parseContext(context)` 方案改造过，结果老师端全部报「未登录」，已回退；
+**不要再尝试从 `context` 读身份。**
+
+因此真正的权限边界在控制台的**云函数安全规则**，默认值为：
+
+```json
+{ "*": { "invoke": "auth != null" } }
+```
+
+默认规则下未登录来源根本调不进来，函数里的 `if (!OPENID) return { ok: false, msg: '未登录' }` 只是第二道防线。
+两条硬约束：
+
+> 1. **不要把 `"invoke"` 改成 `true`**（等于放行未登录用户），也不要让未登录模式的规则覆盖 `listForms`、
+>    `createMonthlyForm`、`exportData`、`getSubmissions` 这些老师函数。
+> 2. 云函数实例会被复用，小程序调用写进进程的 `WX_OPENID` 可能残留到下一次调用。一旦匿名调用被放行，
+>    它就可能继承上一位老师的身份——**这个风险函数内部挡不住**，只能靠安全规则挡住。
+
+Web 管理端（未登录模式 + 自建凭据）落地时同样遵守这两条：给 Web 用的云函数**必须另起名字**并在安全规则里
+单独放行，且**只认事件里带的自建凭据，绝不调用 `cloud.getWXContext()`**。详见 `tests/workflow.test.js`
+末尾对应的两条 `test.todo`。
+
+### Web 管理端（老师用，未登录模式 + 自建凭据）
+
+网页访客没有微信身份，所以不共用小程序那套 `openid`，而是自建凭据：
+
+```
+首次激活 webBind（姓名 + 工号完全一致，与 bindStudent 同一信任模型；已激活则拒绝重绑）
+   → 登录 webLogin（校验口令，签发无状态 HMAC 票据，12 小时）
+   → webSession（票据换身份，网页刷新后恢复登录态）
+```
+
+- 口令用 `scrypt` 加盐哈希存进 `export_accounts` 的 `webPasswordSalt` / `webPasswordHash`，**不存明文**。
+- 票据密钥来自云函数环境变量 **`WEB_TOKEN_SECRET`**（至少 16 字符）。**取不到就拒绝服务**，绝不退回默认值。
+  三个 `web*` 函数都要配这个变量。
+- 登录失败一律回同一句提示（未激活 / 密码错 / 工号错 / 账户不存在），避免被拿来枚举账户。
+- `webauth.js` 在三个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
+  `getWXContext()`**（未登录模式下那是残留身份）。
+
+前端在 `web/`（React + Vite + TypeScript）：`npm run dev` 起本地，`npm run build` 出 `dist/` 传到静态网站托管。
+Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js`），
+加载后在 `window.cloud` 上；用 `new cloud.Cloud({ identityless: true, resourceAppid, resourceEnv })` + `init()`。
+
+**部署前必须在控制台完成的三件事**（缺一项网页就调不通，且都不会在本地测试里暴露）：
+
+> 1. 开启**未登录模式**：云开发控制台 → 设置 → 全局设置/权限设置。云环境默认禁止未登录访问。
+> 2. 数据库/存储权限必须用**安全规则**配置，不能用「简易权限配置」——否则未登录用户访问不了云资源。
+> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给 `webBind` / `webLogin` / `webSession`
+>    加 `"invoke": true`。未登录模式下安全规则里的 `auth` 为空。
+>
+> 未登录模式**不会**调用 `cloudbase_auth` 云函数（那是公众号登录态才需要的），本项目不需要实现它。
+
 
 ### 月度表单
 > 表单由填空题和选择题组成
@@ -133,7 +193,7 @@ else :
 
 
 ### 导出要求
-导出产物是 "Year_Month_Day.xlsx"，包含两个工作表。
+导出产物是 "Year_Month_Day学助工时明细.xlsx"，包含两个工作表。
 
 **主表**（工作表名 = 表单月份，每人一行）：
 | 姓名    | 部门 | 有效工时 | 值班总工时 | 值班时段 | 值班地点 | 项目名称 | 额外工时申诉 |

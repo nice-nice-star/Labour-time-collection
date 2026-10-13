@@ -1,18 +1,105 @@
 :root {
   color-scheme: light;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --border: #dfe5ea;
+  --muted: #6b7683;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #f3f6f8;
   color: #1f2329;
 }
 
+.card {
+  width: 100%;
+  max-width: 360px;
+  margin: 24px;
+  padding: 28px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(31 35 41 / 6%);
+}
+
 h1 {
-  margin: 0;
-  padding: 24px;
+  margin: 0 0 8px;
   font-size: 20px;
   font-weight: 600;
+}
+
+.helper {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #4a90d9;
+}
+
+button {
+  padding: 11px;
+  font-size: 15px;
+  color: #fff;
+  background: #2f7dd1;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #9db9d6;
+  cursor: default;
+}
+
+button.link {
+  width: 100%;
+  margin-top: 12px;
+  padding: 6px;
+  font-size: 13px;
+  color: #2f7dd1;
+  background: none;
+}
+
+.error,
+.notice {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.error {
+  color: #b3261e;
+  background: #fdeceb;
+}
+
+.notice {
+  color: #1c6b3c;
+  background: #e9f6ee;
 }

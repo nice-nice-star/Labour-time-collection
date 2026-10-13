@@ -71,6 +71,8 @@ exports.main = async (event) => {
     studentId: stu.studentId,
     name: stu.name,
     isSupervisor: !!stu.isSupervisor,
+    // 记录来源：月结补零也写 submissions，靠这个字段区分「真提交」与「未提交自动补零」
+    source: 'student',
     // 部门取自名单，不接受前端传值；落库是快照，之后调整名单不影响历史月份
     department: resolveDepartment(stu.department),
     answers,

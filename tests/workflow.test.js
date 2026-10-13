@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHarness } = require('./helpers/cloud-harness')
 const { calcHours } = require('../miniprogram/utils/calc')
-const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, PROJECT_LABELS_EN, PROJECT_ROWS, resolveProjectKey, labelOf, rateOf, hasCoordinatorRate, normalizeProjectRows, DEPARTMENTS, DEPARTMENT_ALIASES, resolveDepartment } = require('../miniprogram/config/constants')
+const { PROJECT_HOURS, PROJECT_KEYS, PROJECT_LABELS, PROJECT_LABELS_EN, PROJECT_ROWS, resolveProjectKey, labelOf, rateOf, hasCoordinatorRate, normalizeProjectRows, DEPARTMENTS, DEPARTMENT_ALIASES, DEPARTMENT_LABELS, resolveDepartment } = require('../miniprogram/config/constants')
 const { resolveCloudEnv } = require('../miniprogram/config/environment')
 
 // WXS 不是 CommonJS 模块，用 vm 执行并取其导出，用于校验模板侧费率表不漂移
@@ -310,6 +310,165 @@ for (const fn of ['createMonthlyForm', 'listForms', 'exportData']) {
   })
 }
 
+// —— 老师权限的安全边界 ——
+// 微信云开发的运行时只把身份写进 process.env（cloud.getWXContext() 读的就是它），
+// 并不存在「每次调用的 context 身份通道」——曾按腾讯云 CloudBase 文档的 parseContext
+// 方案改造过，结果老师端全部报「未登录」，已回退。
+// 因此真正的边界不在函数内部，而在平台的「云函数安全规则」：默认 auth != null 时，
+// 未登录来源根本调不到这些函数。函数内的 !OPENID 判断是第二道防线。
+
+// 需要老师权限的云函数，必须全部落在 auth != null 之下
+const GUARDED_FUNCTIONS = ['createMonthlyForm', 'listForms', 'exportData', 'getSubmissions']
+
+test('匿名调用（未登录来源）拿不到老师权限，不写库也不导出', async () => {
+  const h = createHarness(fixture())
+  for (const fn of GUARDED_FUNCTIONS) {
+    const res = await h.call(fn, undefined, { month: '2026-10', formId: 'f' })
+    assert.equal(res.ok, false, `${fn} 放行了没有 openid 的调用`)
+    assert.equal(res.msg, '未登录')
+  }
+  assert.equal(h.uploads.length, 0)
+  assert.equal(h.tables.monthly_forms.length, 1)   // 匿名调用没能新建表单
+})
+
+// —— Web 管理端：未登录模式 + 自建凭据 ——
+// 网页访客没有微信身份，所以 web* 函数只认自己签发的凭据：
+//   激活 webBind（姓名 + 工号完全一致）→ 登录 webLogin 换票据 → webSession 恢复会话
+// 票据是无状态 HMAC，密钥来自云函数环境变量 WEB_TOKEN_SECRET。
+
+const WEB_SECRET = 'test-secret-at-least-16-chars'
+const WEB_FUNCTIONS = ['webBind', 'webLogin', 'webSession']
+process.env.WEB_TOKEN_SECRET = WEB_SECRET
+
+function webFixture() {
+  const seed = fixture()
+  // 第二个老师账户，用于验证「票据归属」不会与残留的微信身份串号
+  seed.export_accounts.push({ _id: 't2', name: '老师乙', exportId: 'T2', openid: 'wx-teacher-2' })
+  return seed
+}
+
+const PASSWORD = 'goodpassword'
+
+test('Web 凭据：姓名 + 工号完全一致才可激活，激活后可登录并换取会话', async () => {
+  const h = createHarness(webFixture())
+  // 姓名或工号对不上：拒绝
+  for (const bad of [{ name: '老师', exportId: 'X' }, { name: 'X', exportId: 'T1' }, { name: '', exportId: 'T1' }]) {
+    assert.equal((await h.call('webBind', undefined, { ...bad, password: PASSWORD })).ok, false, JSON.stringify(bad))
+  }
+  // 密码太短：拒绝，且不落库
+  assert.equal((await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: 'short' })).ok, false)
+  assert.equal(h.tables.export_accounts[0].webPasswordHash, undefined)
+
+  assert.equal((await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })).ok, true)
+  const stored = h.tables.export_accounts[0]
+  assert.ok(stored.webPasswordHash && stored.webPasswordSalt, '激活后应写入哈希与盐')
+  assert.equal(JSON.stringify(h.tables.export_accounts).includes(PASSWORD), false, '不得存明文密码')
+
+  const login = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  assert.equal(login.ok, true)
+  assert.ok(login.token, '登录成功应返回票据')
+  assert.deepEqual(login.user, { name: '老师', exportId: 'T1' })
+
+  const session = await h.call('webSession', undefined, { token: login.token })
+  assert.equal(session.ok, true)
+  assert.deepEqual(session.user, { name: '老师', exportId: 'T1' })
+})
+
+test('Web 凭据：已激活的账户拒绝再次绑定，防止知道姓名工号的人顶掉密码', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const before = h.tables.export_accounts[0].webPasswordHash
+
+  const again = await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: 'attackerpass' })
+  assert.equal(again.ok, false)
+  assert.equal(h.tables.export_accounts[0].webPasswordHash, before, '重复绑定不得覆盖已有哈希')
+  // 原密码仍然有效，攻击者设的密码无效
+  assert.equal((await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })).ok, true)
+  assert.equal((await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: 'attackerpass' })).ok, false)
+})
+
+test('Web 登录：未激活、密码错、工号错、账户不存在返回同一句提示，不泄露账户是否存在', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const cases = [
+    { name: '老师', exportId: 'T1', password: 'wrongpassword' },    // 密码错
+    { name: '老师', exportId: 'T9', password: PASSWORD },           // 工号错
+    { name: '查无此人', exportId: 'T1', password: PASSWORD },        // 账户不存在
+    { name: '老师乙', exportId: 'T2', password: PASSWORD }           // 存在但未激活
+  ]
+  const msgs = new Set()
+  for (const data of cases) {
+    const res = await h.call('webLogin', undefined, data)
+    assert.equal(res.ok, false)
+    msgs.add(res.msg)
+  }
+  assert.equal(msgs.size, 1, '不同失败原因必须回同一句话，避免枚举账户')
+  // 参数缺失属于请求格式错误，允许提示得更具体（不涉及账户是否存在）
+  assert.equal((await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: '' })).ok, false)
+})
+
+test('Web 会话：篡改、过期、换密钥、缺密钥一律拒绝', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const [body, sig] = token.split('.')
+
+  for (const bad of [undefined, '', 'not-a-token', `${token}x`, body, `x.${sig}`, `${body}.${sig}x`]) {
+    assert.equal((await h.call('webSession', undefined, { token: bad })).ok, false, `放行了非法票据: ${bad}`)
+  }
+
+  const { signToken } = require('../cloudfunctions/webSession/webauth')
+  // 过期票据：签名合法但已超出有效期
+  const expired = signToken(h.tables.export_accounts[0]._id, WEB_SECRET, Date.now() - 2 * 24 * 60 * 60 * 1000)
+  assert.equal((await h.call('webSession', undefined, { token: expired })).ok, false, '过期票据被放行')
+  // 换密钥签的票据不认
+  assert.equal((await h.call('webSession', undefined, { token: signToken('t', 'another-secret-16-chars-long') })).ok, false)
+
+  // 缺密钥：拒绝服务，而不是退回无签名校验
+  delete process.env.WEB_TOKEN_SECRET
+  try {
+    assert.equal((await h.call('webSession', undefined, { token })).ok, false)
+    assert.equal((await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })).ok, false)
+  } finally {
+    process.env.WEB_TOKEN_SECRET = WEB_SECRET
+  }
+})
+
+test('Web 函数不读调用方环境身份：残留的微信身份不会串号', async () => {
+  const h = createHarness(webFixture())
+  // 老师甲先用小程序调用，实例里留下残留身份
+  assert.equal((await h.call('listForms', 'wx-teacher')).ok, true)
+
+  await h.call('webBind', undefined, { name: '老师乙', exportId: 'T2', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师乙', exportId: 'T2', password: PASSWORD })
+
+  // 残留身份是老师甲，票据属于老师乙：必须按票据判定，不能串号
+  const session = await h.call('webSession', undefined, { token })
+  assert.deepEqual(session.user, { name: '老师乙', exportId: 'T2' })
+  // 没有票据时，残留身份也换不到任何东西
+  assert.equal((await h.call('webSession', undefined, {})).ok, false)
+})
+
+test('Web 与小程序的身份来源互不越界，且 webauth.js 各副本一致', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const read = (...parts) => fs.readFileSync(path.resolve(__dirname, ...parts), 'utf8')
+  // 只检查代码：注释里写明「不要读 getWXContext」是应该的，不该被判违规
+  const codeOnly = source => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  const reference = read('../cloudfunctions', WEB_FUNCTIONS[0], 'webauth.js')
+  for (const fn of WEB_FUNCTIONS) {
+    assert.equal(read('../cloudfunctions', fn, 'webauth.js'), reference, `webauth.js 副本不一致: ${fn}`)
+    const source = read('../cloudfunctions', fn, 'index.js')
+    assert.ok(source.includes("require('./webauth')"), `${fn} 没有使用 webauth.js`)
+    // 未登录模式下 getWXContext() 是残留身份，web 函数一旦读它就会把权限交给匿名访客
+    assert.equal(codeOnly(source).includes('getWXContext'), false, `${fn} 读取了调用方环境身份`)
+  }
+  // 反向约束：老师函数必须继续用 getWXContext()，靠平台安全规则挡住未登录来源
+  for (const fn of GUARDED_FUNCTIONS) {
+    assert.ok(codeOnly(read('../cloudfunctions', fn, 'index.js')).includes('getWXContext'), `${fn} 不应改读别的身份来源`)
+  }
+})
+
 test('老师创建新月表单并更新截止时间，不重复创建', async () => {
   const h = createHarness(fixture())
   const first = await h.call('createMonthlyForm', 'wx-teacher', { month: '2026-11' })
@@ -434,7 +593,7 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   assert.equal(h.tables.submissions.length, 2)
   const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
   assert.equal(exported.ok, true)
-  assert.equal(exported.filename, '2026_10_15.xlsx')
+  assert.equal(exported.filename, '2026_10_15学助工时明细.xlsx')
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
   assert.equal(sheets.length, 2)
   assert.equal(sheets[0].name, '2026-10')
@@ -539,9 +698,129 @@ test('部门：历史提交缺字段导出为空字符串，已移除的旧部�
   assert.equal(rowOf('主管乙')[1], 'CPRO')     // 查不到中文名 → 原样输出，不静默清空
 })
 
+test('部门中文名映射在小程序与 exportData 两处一致，覆盖全部枚举', () => {
+  const exportConstants = require('../cloudfunctions/exportData/constants')
+  assert.deepEqual(DEPARTMENT_LABELS, exportConstants.DEPARTMENT_LABELS)
+  assert.equal(Object.keys(DEPARTMENT_LABELS).length, DEPARTMENTS.length)
+  for (const d of DEPARTMENTS) assert.ok(DEPARTMENT_LABELS[d], `部门缺少中文名: ${d}`)
+})
+
+test('填报情况：仅导出账户可读，学助、未绑定与缺少表单号被拒', async () => {
+  const h = createHarness(fixture())
+  for (const id of ['wx-a', 'wx-b', 'stranger', undefined]) {
+    assert.equal((await h.call('getSubmissions', id, { formId: 'f' })).ok, false)
+  }
+  assert.equal((await h.call('getSubmissions', 'wx-teacher', {})).ok, false)
+  const res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  assert.equal(res.ok, true)
+  assert.equal(res.form.month, '2026-10')
+  assert.equal(res.form.status, 'open')
+})
+
+test('填报情况：进度区分真提交与月结补零，未提交不下发工时', async () => {
+  const h = createHarness(fixture())
+  await h.call('submitForm', 'wx-a', answer)            // 值班 30 + 集体活动 2×2 = 34，非主管
+  assert.equal(h.tables.submissions[0].source, 'student')
+
+  let res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  assert.deepEqual(res.summary, { total: 3, bound: 2, submitted: 1, pending: 1, unbound: 1 })
+  const rowOf = name => res.rows.find(r => r.name === name)
+  const jia = rowOf('学助甲')
+  assert.equal(jia.submitted, true)
+  assert.equal(jia.zeroFilled, false)
+  assert.equal(jia.effectiveHours, 34)
+  // 已提交者取提交时快照（规范值）
+  assert.equal(jia.department, 'Administration_and_Data')
+  // 未提交者退回名单原值（页面负责归一化）；没有有效工时，留 null 而不是 0
+  const yi = rowOf('主管乙')
+  assert.equal(yi.bound, true)
+  assert.equal(yi.submitted, false)
+  assert.equal(yi.effectiveHours, null)
+  assert.equal(yi.department, ' administration_and_data ')
+  // 未绑定者既不计入已提交也不计入待提交
+  const bing = rowOf('待绑定丙')
+  assert.equal(bing.bound, false)
+  assert.equal(bing.submitted, false)
+  assert.equal(bing.effectiveHours, null)
+
+  // 月结补零后，进度必须仍是「未提交」，不能把补零记录算成已填报
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  await h.call('calculateMonthly', undefined)
+  assert.equal(h.tables.submissions.find(r => r.openid === 'wx-b').source, 'auto-zero')
+  res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  const jia2 = res.rows.find(r => r.name === '学助甲')
+  const yi2 = res.rows.find(r => r.name === '主管乙')
+  assert.equal(jia2.submitted, true)
+  assert.equal(jia2.effectiveHours, 34)
+  assert.equal(yi2.submitted, false)
+  assert.equal(yi2.zeroFilled, true)
+  assert.equal(yi2.effectiveHours, null)
+  assert.deepEqual(res.summary, { total: 3, bound: 2, submitted: 1, pending: 1, unbound: 1 })
+})
+
+test('填报情况：不下发学助填写的答案与项目明细', async () => {
+  const h = createHarness(fixture())
+  await h.call('submitForm', 'wx-a', answer)
+  const res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  for (const row of res.rows) {
+    assert.equal('answers' in row, false)
+    assert.equal('projectRows' in row, false)
+  }
+  // 汇总里也不应夹带答案文本
+  assert.equal(JSON.stringify(res).includes('测试项目'), false)
+  assert.equal(JSON.stringify(res).includes('周一上午'), false)
+})
+
+test('填报情况：名单超过单次读取上限时仍返回全部记录（分页）', async () => {
+  const seed = fixture()
+  for (let i = 0; i < 150; i++) {
+    seed.students.push({
+      _id: `x${i}`, name: `批量${String(i).padStart(3, '0')}`, studentId: `X${i}`,
+      openid: `wx-x${i}`, isSupervisor: false, department: 'Public_Relations'
+    })
+  }
+  const h = createHarness(seed)
+  const res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+  assert.equal(res.rows.length, 153)
+  assert.equal(res.summary.total, 153)
+  assert.equal(res.summary.submitted, 0)
+  assert.equal(res.summary.bound, 152)      // 待绑定丙没有 openid
+})
+
+test('填报情况搜索：按姓名子串过滤，忽略大小写与首尾空白，空关键词返回全部', () => {
+  const { filterRowsByName } = require('../miniprogram/utils/search')
+  const rows = [{ name: '学助甲' }, { name: '主管乙' }, { name: 'Alice Chen' }, { name: '' }, {}]
+  assert.deepEqual(filterRowsByName(rows, '学').map(r => r.name), ['学助甲'])
+  assert.deepEqual(filterRowsByName(rows, '  主管 ').map(r => r.name), ['主管乙'])
+  assert.deepEqual(filterRowsByName(rows, 'alice').map(r => r.name), ['Alice Chen'])
+  assert.deepEqual(filterRowsByName(rows, 'ALICE').map(r => r.name), ['Alice Chen'])
+  assert.equal(filterRowsByName(rows, '不存在').length, 0)
+  // 空关键词（含空白、null）返回全部，且不复制数组
+  for (const empty of ['', '   ', null, undefined]) {
+    assert.equal(filterRowsByName(rows, empty), rows)
+  }
+  // 名单未加载 / 结构异常时不抛错
+  assert.deepEqual(filterRowsByName(undefined, 'x'), [])
+  assert.deepEqual(filterRowsByName('not-an-array', 'x'), [])
+  // 只匹配姓名，不匹配部门等其它字段
+  assert.equal(filterRowsByName([{ name: '学助甲', department: 'Administration_and_Data' }], 'admin').length, 0)
+})
+
 // 已确认的风险明确标记为待办，避免把本地通过误认为已经可上线。
 test.todo('绑定唯一性：一个微信不得绑定多个学助或同时绑定老师与学助；需事务与并发验证')
 test.todo('服务端拒绝负数、非有限值、非法地点、非法项目与非整数数量')
 test.todo('并发绑定、并发首次提交、并发计算不会抢绑或重复写入')
 test.todo('超过数据库单次查询上限时，计算与导出仍覆盖全部记录')
 test.todo('calculateMonthly 的调用来源与权限限制，以及 manual 分支的完整行为')
+// 老师权限的真正边界在平台侧，本地测试碰不到，必须在控制台核对：
+// 1) 云函数安全规则保持默认的 auth != null（"invoke": true 会放行未登录用户）；
+// 2) 未登录模式放行的只能是专门给 Web 用的函数，不能覆盖 listForms 等老师函数。
+// 一旦放宽，被复用实例里残留的 WX_OPENID 就可能被匿名调用继承——函数内部挡不住。
+test.todo('云函数安全规则保持 auth != null，且未登录模式不覆盖老师函数；需在控制台核对')
+// 「web* 只认自建凭据、不读 getWXContext()」已由上面的用例在源码与行为两层覆盖，
+// 但下面这些只有真实环境能验证：
+test.todo('未登录模式在真实网页中可用：控制台已开启、数据库用安全规则、web* 已单独放行 invoke')
+// 三个 web* 必须共用同一个密钥：webLogin 签发、webSession 验签，值不一致就会全部验不过。
+// 而测试环境与正式环境的密钥必须不同，避免拿测试票据去撞正式环境。
+test.todo('三个 web* 云函数已配置同一个 WEB_TOKEN_SECRET，且测试/正式环境各用独立密钥')
+test.todo('Web 登录需要限流/锁定，防止口令被在线暴力破解')

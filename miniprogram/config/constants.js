@@ -177,6 +177,20 @@ const DEPARTMENT_ALIASES = {
   'magazine publisher': 'Magazine_publisher'
 }
 
+// 部门规范值 → 展示用中文名（导出 Excel 的部门列、老师「填报情况」页都用它）。
+// 与 cloudfunctions/exportData/constants.js 的同名表必须一致，tests/workflow.test.js 会校验。
+// 落库快照里枚举之外的旧值查不到时，调用方应原样显示，不要静默清空。
+const DEPARTMENT_LABELS = {
+  Public_Relations: '公共关系',
+  Domestic_social_Media: '国内社媒',
+  Multimedia_center: '多媒体中心',
+  Journalist_News_Center: '大学新闻中心记者',
+  Overseas_social_Media: '海外社媒',
+  University_Gift_shop: '纪念品商店',
+  Administration_and_Data: '行政与数据',
+  Magazine_publisher: '神仙湖畔杂志社'
+}
+
 /**
  * 把名单里的部门归一化成规范枚举值（先精确匹配枚举，再查别名表）
  * @param {string} value
@@ -210,6 +224,7 @@ module.exports = {
   LOCATION_OPTIONS,
   DEPARTMENTS,
   DEPARTMENT_ALIASES,
+  DEPARTMENT_LABELS,
   resolveDepartment,
   ROLES
 }
