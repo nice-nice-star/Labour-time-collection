@@ -1,5 +1,6 @@
 // cloudfunctions/submitForm/index.js
 const cloud = require('wx-server-sdk')
+const { normalizeProjects, projectCounts } = require('./projects')
 const {
   normalizeProjectRows,
   rateOf,
@@ -51,17 +52,30 @@ exports.main = async (event) => {
     return { ok: false, msg: '已过截止时间' }
   }
 
+  const exist = await db.collection('submissions').where({ formId: form._id, openid: OPENID }).get()
+  const previous = exist.data[0]
+  const hasProjects = Object.prototype.hasOwnProperty.call(event, 'projects')
+  // 新版提交只从服务端旧记录继承历史数量，防止客户端重复汇总。
+  const legacyProjectRows = hasProjects && previous
+    ? (Array.isArray(previous.projects) ? (previous.legacyProjectRows || []) : (previous.projectRows || [])) : []
+  let projects
+  if (hasProjects) {
+    try { projects = normalizeProjects(event.projects) }
+    catch (e) { return { ok: false, msg: e.message } }
+  } else if (previous && Array.isArray(previous.projects)) {
+    return { ok: false, msg: '请更新小程序后修改逐项填报记录' }
+  }
   // 组装答案
   const answers = {
     answer1: String(dutyHours || '').trim(),
     answer2: String(shiftTime || '').trim(),
     answer3: LOCATIONS[locationIndex] || '',
     answer4: '见 projectRows',
-    answer5: String(projectName || '').trim(),
+    answer5: hasProjects ? [legacyProjectRows.length && previous ? previous.legacyProjectName || (!Array.isArray(previous.projects) ? previous.answers.answer5 : '') : '', ...projects.map(p => p.name)].filter(Boolean).join('、') : String(projectName || '').trim(),
     answer6: String(appeal || '').trim()
   }
   // 归一化为 { key, label, counts:{participant,coordinator} }，落库保留 label 作为导出文本
-  const rows = normalizeProjectRows(projectRows)
+  const rows = hasProjects ? projectCounts(projects, legacyProjectRows) : normalizeProjectRows(projectRows)
   const calcResult = calc(answers, rows, !!stu.isSupervisor)
 
   const data = {
@@ -77,13 +91,12 @@ exports.main = async (event) => {
     department: resolveDepartment(stu.department),
     answers,
     projectRows: rows,
+    ...(hasProjects ? { projects, legacyProjectRows, legacyProjectName: previous ? previous.legacyProjectName || (!Array.isArray(previous.projects) ? previous.answers.answer5 || '' : '') : '' } : {}),
     calc: calcResult,
     updateTime: db.serverDate()
   }
 
   // upsert
-  const exist = await db.collection('submissions')
-    .where({ formId: form._id, openid: OPENID }).get()
   if (exist.data.length) {
     await db.collection('submissions').doc(exist.data[0]._id).update({ data })
   } else {
