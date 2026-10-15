@@ -1,7 +1,8 @@
 // miniprogram/pages/form/form.js
 const app = getApp()
-const { PROJECT_ROWS, LOCATION_OPTIONS, resolveProjectKey, normalizeProjectRows } = require('../../config/constants')
-const { calcHours } = require('../../utils/calc')
+let nextProjectId = 0
+const { PROJECT_ROWS, LOCATION_OPTIONS } = require('../../config/constants')
+const { STATUS_OPTIONS, normalizeProjects } = require('../../config/projects')
 
 Page({
   data: {
@@ -9,9 +10,8 @@ Page({
     closed: false, loading: true, loadError: '', hasSubmission: false,
     dutyHours: '', shiftTime: '', locationIndex: -1,
     locationOptions: LOCATION_OPTIONS,
-    projectRows: PROJECT_ROWS.map(r => ({ ...r, counts: { participant: 0, coordinator: 0 } })),
+    projectOptions: PROJECT_ROWS, statusOptions: STATUS_OPTIONS, projects: [], legacyProjectRows: [],
     projectName: '', appeal: '',
-    preview: { totalHours: 0, effectiveHours: 0 },
     submitting: false
   },
 
@@ -35,7 +35,7 @@ Page({
       const closed = r.form.status !== 'open' || Date.now() > deadlineTime
       this.setData({ month: r.form.month, deadline: r.form.deadline, status: r.form.status, closed, hasSubmission: !!r.submission })
       if (r.submission) this.fillExisting(r.submission)
-      else this.recalc()
+
     } catch (e) {
       this.setData({ loadError: '网络连接失败，请稍后重试' })
     } finally {
@@ -48,54 +48,57 @@ Page({
       dutyHours: s.answers.answer1 == null ? '' : s.answers.answer1,
       shiftTime: s.answers.answer2 || '',
       locationIndex: LOCATION_OPTIONS.indexOf(s.answers.answer3),
-      projectRows: PROJECT_ROWS.map(pr => {
-        const saved = (s.projectRows || []).find(x => resolveProjectKey(x && (x.key || x.item)) === pr.key)
-        const counts = (saved && saved.counts) || {}
-        const count = (value) => Math.max(0, Math.floor(Number(value) || 0))
-        return { ...pr, counts: { participant: count(counts.participant), coordinator: count(counts.coordinator) } }
-      }),
-      projectName: s.answers.answer5 || '',
+      projects: (s.projects || []).map(p => ({ ...p, localId: ++nextProjectId, typeIndex: PROJECT_ROWS.findIndex(r => r.key === p.key) })),
+      legacyProjectRows: Array.isArray(s.projects) ? (s.legacyProjectRows || []) : (s.projectRows || []).filter(r => r.counts && (r.counts.participant || r.counts.coordinator)),
+      projectName: s.legacyProjectName || s.answers.answer5 || '',
       appeal: s.answers.answer6 || ''
     })
-    this.recalc()
   },
 
-  onDuty(e) { this.setData({ dutyHours: e.detail.value }); this.recalc() },
+  onDuty(e) { this.setData({ dutyHours: e.detail.value }) },
   onShift(e) { this.setData({ shiftTime: e.detail.value }) },
   onLocation(e) { this.setData({ locationIndex: Number(e.detail.value) }) },
 
-  onCount(e) {
-    const { idx, role } = e.currentTarget.dataset
-    this.setData({ [`projectRows[${idx}].counts.${role}`]: Math.max(0, Math.floor(Number(e.detail.value) || 0)) })
-    this.recalc()
+  addProject() {
+    if (this.data.closed || this.data.submitting) return
+    this.setData({ projects: this.data.projects.concat({ localId: ++nextProjectId, key: '', typeIndex: -1, name: '', role: '', status: '', completionForm: '', actualHours: '' }) })
   },
-
-  onProjectName(e) { this.setData({ projectName: e.detail.value }) },
+  removeProject(e) {
+    if (this.data.closed || this.data.submitting) return
+    this.setData({ projects: this.data.projects.filter((_, i) => i !== Number(e.currentTarget.dataset.idx)) })
+  },
+  onProjectType(e) {
+    if (this.data.closed || this.data.submitting) return
+    const idx = e.currentTarget.dataset.idx
+    const typeIndex = Number(e.detail.value)
+    this.setData({ [`projects[${idx}].typeIndex`]: typeIndex, [`projects[${idx}].key`]: PROJECT_ROWS[typeIndex].key })
+  },
+  onProjectField(e) {
+    if (this.data.closed || this.data.submitting) return
+    const { idx, field } = e.currentTarget.dataset
+    this.setData({ [`projects[${idx}].${field}`]: e.detail.value })
+  },
   onAppeal(e) { this.setData({ appeal: e.detail.value }) },
-
-  recalc() {
-    const app = getApp()
-    const isSup = !!(app.globalData.user && app.globalData.user.isSupervisor)
-    const preview = calcHours(this.data.dutyHours, this.data.projectRows, isSup)
-    this.setData({ preview })
-  },
 
   async submit() {
     if (this.data.submitting || this.data.loading || this.data.loadError) return
     if (this.data.closed) return wx.showToast({ title: '表单已截止', icon: 'none' })
-    const { dutyHours, shiftTime, locationIndex, projectRows, projectName, appeal } = this.data
+    const { dutyHours, shiftTime, locationIndex, projects, appeal } = this.data
     if (dutyHours === '' || !Number.isFinite(Number(dutyHours)) || Number(dutyHours) < 0) return wx.showToast({ title: '请填写有效的值班工时', icon: 'none' })
     if (locationIndex < 0) return wx.showToast({ title: '请选择值班地点', icon: 'none' })
 
+    let normalizedProjects
+    try { normalizedProjects = normalizeProjects(projects) }
+    catch (e) { return wx.showToast({ title: e.message, icon: 'none' }) }
     this.setData({ submitting: true })
     try {
       const res = await wx.cloud.callFunction({
         name: 'submitForm',
-        data: { dutyHours, shiftTime, locationIndex, projectRows: normalizeProjectRows(projectRows), projectName, appeal }
+        data: { dutyHours, shiftTime, locationIndex, projects: normalizedProjects, appeal }
       })
       const r = res.result
       if (!r.ok) return wx.showToast({ title: r.msg, icon: 'none' })
-      this.setData({ preview: r.calc, hasSubmission: true })
+      this.setData({ hasSubmission: true })
       wx.showToast({ title: '提交成功', icon: 'success' })
     } catch (e) {
       wx.showToast({ title: '提交失败', icon: 'none' })

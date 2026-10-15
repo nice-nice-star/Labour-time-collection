@@ -65,6 +65,13 @@ async function renderWorkbook(model) {
   applyLayout(sheet, model)
   applyStyle(sheet, model)
 
+  if (model.detailRows) {
+    const details = workbook.addWorksheet('项目明细')
+    model.detailRows.forEach(row => details.addRow(row))
+    ;[14, 30, 28, 28, 12, 20, 40, 24, 12, 12, 14].forEach((width, i) => { details.getColumn(i + 1).width = width })
+    details.eachRow(row => row.eachCell(cell => { cell.alignment = { vertical: 'top', wrapText: true } }))
+    details.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+  }
   return workbook.xlsx.writeBuffer()
 }
 

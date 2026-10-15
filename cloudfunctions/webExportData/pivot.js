@@ -7,6 +7,7 @@
 // 数据口径没有分叉：绑定/提交/补零的判定与汇总仍然走 rows.js，部门映射走
 // departments.js，两者都是与 webGetSubmissions 逐字节一致的副本（测试校验），
 // 所以统计表与「填报情况」页不会各说各话。
+const { projectDetails } = require('./projectDetails')
 const { PROJECT_HOURS } = require('./constants')
 const { PROJECT_ROWS } = require('./projectRows')
 const { buildRows, summarize } = require('./rows')
@@ -258,6 +259,7 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
   const stamp = `${now.getFullYear()}_${pad(now.getMonth() + 1)}_${pad(now.getDate())}`
   return {
     filename: `${stamp}学助工时统计表.xlsx`,
+    detailRows: projectDetails(submissions, departmentLabel),
     sheetName: String(form.month || 'Sheet1'),
     fontSize: FONT_SIZE,
     titleSize: TITLE_SIZE,

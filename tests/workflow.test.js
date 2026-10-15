@@ -905,9 +905,9 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
 
   // 项目明细：每人每个申报项目一行；学助甲由月结补零、projectRows 为空，不产生明细行
   assert.equal(sheets[1].name, '项目明细')
-  assert.deepEqual(sheets[1].data[0], ['姓名', '部门', '项目', '参与数', '统筹数', '折算工时'])
+  assert.deepEqual(sheets[1].data[0], ['姓名', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时'])
   assert.equal(sheets[1].data.length, 2)
-  assert.deepEqual(sheets[1].data[1], ['主管乙', '行政与数据', '集体活动', 2, 0, 4])
+  assert.deepEqual(sheets[1].data[1], ['主管乙', '行政与数据', '集体活动', '', '', '', '', '', 2, 0, 4])
 })
 
 test('项目明细工作表：一人多项目、统筹列、按实际留空、全 0 行不写', async () => {
@@ -926,11 +926,11 @@ test('项目明细工作表：一人多项目、统筹列、按实际留空、�
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
   const detail = sheets[1]
   assert.equal(detail.name, '项目明细')
-  assert.deepEqual(detail.data[0], ['姓名', '部门', '项目', '参与数', '统筹数', '折算工时'])
+  assert.deepEqual(detail.data[0], ['姓名', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时'])
   assert.deepEqual(detail.data.slice(1), [
-    ['学助甲', '行政与数据', '集体活动', 2, 1, 12],
-    ['学助甲', '行政与数据', '海报设计', 3, 0, 3],
-    ['学助甲', '行政与数据', '接待活动', 2, 0, '']
+    ['学助甲', '行政与数据', '集体活动', '', '', '', '', '', 2, 1, 12],
+    ['学助甲', '行政与数据', '海报设计', '', '', '', '', '', 3, 0, 3],
+    ['学助甲', '行政与数据', '接待活动', '', '', '', '', '', 2, 0, '']
   ])
   // 主表仍是一人一行，且不含明细列
   assert.equal(sheets[0].data.length, 2)
@@ -1121,3 +1121,51 @@ test.todo('未登录模式在真实网页中可用：控制台已开启、数据
 // 值不一致就会全部验不过；而测试环境与正式环境的密钥必须不同，避免拿测试票据去撞正式环境。
 test.todo('七个 web* 云函数已配置同一个 WEB_TOKEN_SECRET，且测试/正式环境各用独立密钥')
 test.todo('Web 登录需要限流/锁定，防止口令被在线暴力破解')
+
+const project = (overrides = {}) => ({ key: 'poster', name: '迎新海报', role: 'coordinator', status: '已发布', completionForm: '公众号', actualHours: 7.5, ...overrides })
+test('逐项填报：同类型汇总、耗时与状态不影响折算、双端导出完整明细', async () => {
+  const h = createHarness(fixture())
+  const projects = [project(), project({ role: 'participant', status: '未完成', actualHours: 100 })]
+  const submitted = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 2, projects })
+  assert.equal(submitted.ok, true)
+  assert.equal(submitted.calc.projectHours, 4)
+  assert.equal(submitted.calc.effectiveHours, 6)
+  const saved = h.tables.submissions[0]
+  assert.equal(saved.projects.length, 2)
+  assert.equal(saved.projectRows[0].counts.participant, 1)
+  assert.equal(saved.projectRows[0].counts.coordinator, 1)
+  const { buildSheets } = require('../cloudfunctions/exportData/exportCore')
+  const details = buildSheets({ month: '2026-10' }, [saved]).sheets[1].data
+  assert.deepEqual(details[1].slice(2), ['海报设计', '迎新海报', '统筹', '已发布', '公众号', 7.5, 0, 1, 3])
+  const { buildPivot } = require('../cloudfunctions/webExportData/pivot')
+  const pivot = buildPivot({ form: { month: '2026-10' }, students: fixture().students, submissions: [saved] })
+  assert.deepEqual(pivot.detailRows.map(r => r.slice(2)), details.map(r => r.slice(2)))
+  const changed = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 2, projects: [project({ actualHours: 0 })] })
+  assert.equal(changed.calc.projectHours, 3)
+  assert.equal(h.tables.submissions.length, 1)
+})
+test('逐项填报：旧记录保留且重复更新不累计，空列表可清除新增项目', async () => {
+  const h = createHarness(fixture())
+  await h.call('submitForm', 'wx-a', answer)
+  for (let i = 0; i < 2; i++) {
+    const r = await h.call('submitForm', 'wx-a', { ...answer, projects: [project()] })
+    assert.equal(r.calc.projectHours, 7)
+  }
+  const r = await h.call('submitForm', 'wx-a', { ...answer, projects: [] })
+  assert.equal(r.calc.projectHours, 4)
+  assert.equal(h.tables.submissions[0].answers.answer5, '测试项目')
+  assert.equal((await h.call('submitForm', 'wx-a', answer)).ok, false)
+})
+test('逐项填报：服务端拒绝缺字段和非法值；所有费率仍沿用原公式', async () => {
+  const h = createHarness(fixture())
+  for (const patch of [{ name: '' }, { key: 'unknown' }, { role: 'both' }, { status: '' }, { completionForm: '' }, { actualHours: '' }, { actualHours: -1 }, { actualHours: 'Infinity' }, { actualHours: null }]) {
+    assert.equal((await h.call('submitForm', 'wx-a', { ...answer, projects: [project(patch)] })).ok, false)
+  }
+  assert.equal(h.tables.submissions.length, 0)
+  for (const key of Object.keys(PROJECT_HOURS)) {
+    for (const role of ['participant', 'coordinator']) {
+      const r = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 0, projects: [project({ key, role })] })
+      assert.equal(r.calc.projectHours, rateOf(key, role) || 0)
+    }
+  }
+})

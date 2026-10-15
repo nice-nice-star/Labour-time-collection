@@ -1,9 +1,7 @@
-// 导出报表的全部纯逻辑：给定表单与提交记录，产出工作表数据与文件名。
-//
-// 抽出来的理由：小程序端（exportData）和 Web 端（webExportData）必须导出**完全一样**的
-// 表格。云函数不能跨目录 require，所以本文件在两处各存一份副本，npm test 会校验逐字节一致，
-// 并用同一份数据比对两边的产物是否相同。
-const { hoursOfRow, DEPARTMENT_LABELS } = require('./constants')
+// 小程序导出汇总与明细；Web 统计表通过 projectDetails.js 复用明细结构。
+const { DEPARTMENT_LABELS } = require('./constants')
+
+const { projectDetails } = require('./projectDetails')
 
 function pad(n) { return String(n).padStart(2, '0') }
 
@@ -22,7 +20,7 @@ function buildSheets(form, submissions, now = new Date()) {
   const rows = [['姓名', '部门', '有效工时', '值班总工时', '值班时段', '值班地点', '项目名称', '额外工时申诉']]
 
   // 明细表：每人每个申报项目一行（计数全 0 的行不写），可直接排序/求和或做透视
-  const detailRows = [['姓名', '部门', '项目', '参与数', '统筹数', '折算工时']]
+  const detailRows = projectDetails(submissions, departmentText)
 
   ;(submissions || []).forEach(s => {
     const department = departmentText(s.department)
@@ -39,22 +37,7 @@ function buildSheets(form, submissions, now = new Date()) {
       s.answers.answer6
     ])
 
-    ;(s.projectRows || []).forEach(r => {
-      const counts = r.counts || {}
-      const participant = Number(counts.participant) || 0
-      const coordinator = Number(counts.coordinator) || 0
-      if (!participant && !coordinator) return   // 表单按模板整表提交，未申报的项目不写进明细
-      const hours = hoursOfRow(r.key, counts)
-      detailRows.push([
-        s.name,
-        department,
-        r.label || r.key,
-        participant,
-        coordinator,
-        // 按实际/待定的项目没有费率：留空，不写成 0，避免被误读成"没有工时"
-        hours == null ? '' : hours
-      ])
-    })
+
   })
 
   return {

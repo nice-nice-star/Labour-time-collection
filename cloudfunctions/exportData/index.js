@@ -20,7 +20,7 @@ exports.main = async (event) => {
   const subs = await db.collection('submissions')
     .where({ formId }).orderBy('name', 'asc').get()
 
-  // 表格怎么长：纯逻辑在 exportCore.js，与 Web 端共用同一份（副本由测试校验）
+  // 表格怎么长：纯逻辑在 exportCore.js，项目明细结构与 Web 端一致
   const { filename, sheets } = buildSheets(form, subs.data, new Date())
   const buffer = xlsx.build(sheets)
 
