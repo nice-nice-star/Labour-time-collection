@@ -17,11 +17,14 @@ exports.main = async (event) => {
   const fRes = await db.collection('monthly_forms').doc(formId).get()
   const form = fRes.data
 
-  const subs = await db.collection('submissions')
-    .where({ formId }).orderBy('name', 'asc').get()
+  // 汇总表要列全名单（含未提交、未绑定），所以名单与提交都要取
+  const [subs, students] = await Promise.all([
+    db.collection('submissions').where({ formId }).orderBy('name', 'asc').get(),
+    db.collection('students').get()
+  ])
 
-  // 表格怎么长：纯逻辑在 exportCore.js，项目明细结构与 Web 端一致
-  const { filename, sheets } = buildSheets(form, subs.data, new Date())
+  // 表格怎么长：纯逻辑在 exportCore.js（汇总 + 项目明细），项目明细结构与 Web 端一致
+  const { filename, sheets } = buildSheets(form, subs.data, students.data, new Date())
   const buffer = xlsx.build(sheets)
 
   const upload = await cloud.uploadFile({

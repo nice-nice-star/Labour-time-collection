@@ -42,7 +42,7 @@
           </view>
         </view>
       </view>
-      <text class="helper">有效工时 = min(40, 值班工时 + 项目工时)，主管先乘 1.5 再封顶，与导出 Excel 口径一致。</text>
+      <text class="helper">有效工时 = min(40, 值班工时 + 项目工时)，主管先乘 1.5 再封顶</text>
     </view>
   </block>
   <text class="footer-note">CPRO · 月度工时管理</text>

@@ -1,14 +1,12 @@
 // Web 管理端专用：工时统计表的版式（纯逻辑，不 require exceljs，便于测试）。
 //
-// 与小程序端导出（exportCore.js 的「长表 + 项目明细」两张表）**刻意不同**：
-// Web 端要的是「一人一行 × 一项目一列」的横向统计表，带大标题行、填报情况行、
-// 两行表头与大量合并单元格。因此这里另起一份版式逻辑，不再与小程序端共用。
-//
-// 数据口径没有分叉：绑定/提交/补零的判定与汇总仍然走 rows.js，部门映射走
-// departments.js，两者都是与 webGetSubmissions 逐字节一致的副本（测试校验），
-// 所以统计表与「填报情况」页不会各说各话。
+// 版式 = 「一人一行 × 一类项目一列」的横向统计表：
+//   基础列（新版表单带来的全部汇总字段） | 每类项目一列折算工时 | 额外工时申诉
+// 与小程序导出的长表**刻意不同**，但汇总字段与判定口径都与小程序「汇总」一致：
+// 绑定/提交/补零的判定与名单汇总走 rows.js，部门映射走 departments.js，
+// 两者都是与 webGetSubmissions 逐字节一致的副本（测试校验）。
 const { projectDetails } = require('./projectDetails')
-const { PROJECT_HOURS } = require('./constants')
+const { PROJECT_HOURS, hoursOfRow } = require('./constants')
 const { PROJECT_ROWS } = require('./projectRows')
 const { buildRows, summarize } = require('./rows')
 const {
@@ -16,11 +14,26 @@ const {
 } = require('./departments')
 
 const TITLE = 'CPRO学助工时统计表'
-const BASE_HEADERS = ['学助姓名', '学号', '部门', '有效工时', '值班工时']
-// 最右侧两列：表单第 5、6 题的自由文本，跟在项目明细之后，纵向合并两行表头
-const TRAILING_HEADERS = ['项目名称', '额外工时申诉']
-const STATUS_UNBOUND = '未绑定'
-const STATUS_PENDING = '待提交'
+
+// 基础列：字段与顺序对齐小程序「汇总」（部门多带一份英文）
+const BASE_HEADERS = [
+  '学助姓名', '学号', '部门',
+  '值班工时', '项目折算工时', '总工时', '有效工时',
+  '项目条数', '已发布', '已完成未发布', '未完成', '实际耗时合计',
+  '填报状态'
+]
+
+// 末尾一列：表单第 6 题的自由文本
+const TRAILING_HEADERS = ['额外工时申诉']
+
+// 填报状态：与小程序「汇总」用同一套词
+const FILL = {
+  SUBMITTED: '已提交',
+  ZERO: '月结补零',
+  PENDING: '未提交',
+  UNBOUND: '未绑定'
+}
+const WORK_STATUS = ['已发布', '已完成未发布', '未完成']
 
 // 外观：表头用与网页同一支品牌紫，表体加细边框（合并区域也要逐格上色/描边，
 // 否则合并块会出现半截白底或缺边）。ARGB 前两位是透明度，FF 表示不透明。
@@ -31,18 +44,17 @@ const STYLE = {
   border: 'FFD9D9D9',
   titleRow: 1,
   headerFrom: 3,
-  headerTo: 4,
+  headerTo: 3,
   tableFrom: 3
 }
 
-// 列宽与行高按样例表：基础列窄、项目列够放下「统筹/参与」两行表头
-const BASE_WIDTHS = [12, 13, 30, 11, 11]
-const SINGLE_WIDTH = 22
-const PAIR_WIDTH = 12.5
-const TRAILING_WIDTHS = [20, 26]
+// 13 个基础列 + 12 个项目列 + 1 个申诉列 = 26 列，与上一版总宽度持平
+const BASE_WIDTHS = [12, 13, 30, 10, 12, 10, 10, 9, 9, 12, 8, 12, 10]
+const TYPE_WIDTH = 20
+const TRAILING_WIDTHS = [20]
 const TITLE_HEIGHT = 22
 const META_HEIGHT = 16
-const HEAD_HEIGHT = 18
+const HEAD_HEIGHT = 30
 const ROW_HEIGHT = 13
 const TITLE_SIZE = 14
 const FONT_SIZE = 10
@@ -62,26 +74,44 @@ function colLetter(index) {
 function pad(n) { return String(n).padStart(2, '0') }
 
 /**
- * 项目列：只保留有数字费率的项目——「按实际/待定」的接待活动、管理项目没有列。
- * 有统筹费率的项目占「统筹 + 参与」两列（顺序与统计表模板一致），单值项目只占「参与」一列。
- * @returns {{cols: {key:string, role:string, label:string}[], groups: {label:string, from:number, to:number}[]}}
+ * 项目列：一类项目一列，只保留有数字费率的项目——「按实际/待定」的接待活动、
+ * 管理项目没有列（它们本来就算不出折算工时）。顺序与 PROJECT_ROWS 一致。
+ * @returns {{key:string, label:string}[]}
  */
 function projectColumns() {
-  const cols = []
-  const groups = []
-  for (const row of PROJECT_ROWS) {
-    const rate = PROJECT_HOURS[row.key]
-    if (!rate || rate.participant == null) continue
-    const from = cols.length
-    if (rate.coordinator != null) {
-      cols.push({ key: row.key, role: 'coordinator', label: '统筹' })
-      cols.push({ key: row.key, role: 'participant', label: '参与' })
-    } else {
-      cols.push({ key: row.key, role: 'participant', label: '参与' })
-    }
-    groups.push({ label: row.label, from, to: cols.length - 1 })
-  }
-  return { cols, groups }
+  return PROJECT_ROWS
+    .filter(row => {
+      const rate = PROJECT_HOURS[row.key]
+      return rate && rate.participant != null
+    })
+    .map(row => ({ key: row.key, label: row.label }))
+}
+
+/**
+ * 每人每类项目的折算工时：按 projectRows（含旧版结转的计数）汇总，
+ * 这样 12 个类型列之和恰好等于 calc.projectHours，老师可以行内对账。
+ * @returns {Map<string, number>}
+ */
+function hoursByKey(projectRows) {
+  const map = new Map()
+  ;(projectRows || []).forEach(row => {
+    const hours = hoursOfRow(row.key, row.counts)
+    if (hours == null) return          // 按实际项目没有费率，不参与折算
+    map.set(row.key, (map.get(row.key) || 0) + hours)
+  })
+  return map
+}
+
+// 项目条数与完成情况只来自逐项填报的 projects[]（月结补零的人为空）
+function projectStats(projects) {
+  const stats = { total: 0, actualHours: 0, statuses: {} }
+  WORK_STATUS.forEach(s => { stats.statuses[s] = 0 })
+  ;(projects || []).forEach(p => {
+    stats.total += 1
+    stats.actualHours += Number(p.actualHours) || 0
+    if (stats.statuses[p.status] != null) stats.statuses[p.status] += 1
+  })
+  return stats
 }
 
 // 部门规范值 → 英文别名（别名表里那批纯英文键），用于「中文 英文」双行显示
@@ -121,7 +151,7 @@ function summaryText(summary) {
   return `名单 ${summary.total} 人：已提交 ${summary.submitted}，待提交 ${summary.pending}，未绑定 ${summary.unbound}`
 }
 
-// 空文本不写成空字符串单元格，留空更干净（未申诉、没填项目名都是常态）
+// 空文本不写成空字符串单元格，留空更干净（没申诉是常态）
 function textOf(value) {
   const text = String(value == null ? '' : value).trim()
   return text || undefined
@@ -153,9 +183,10 @@ function orderStudents(students, byOpenid) {
  * @param {{form: object, students: object[], submissions: object[], now?: Date}} input
  */
 function buildPivot({ form, students, submissions, now = new Date() }) {
-  const { cols, groups } = projectColumns()
-  // 列布局：基础列 | 项目列（统筹/参与） | 末尾两列自由文本
-  const trailingFrom = BASE_HEADERS.length + cols.length
+  const cols = projectColumns()
+  // 列布局：基础列 | 项目列（一类一列折算工时） | 末尾申诉
+  const typeFrom = BASE_HEADERS.length
+  const trailingFrom = typeFrom + cols.length
   const totalColumns = trailingFrom + TRAILING_HEADERS.length
   const lastCol = colLetter(totalColumns)
   const byOpenid = new Map((submissions || []).map(s => [s.openid, s]))
@@ -165,11 +196,11 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
   const merges = []
   const blank = () => new Array(totalColumns).fill(undefined)
 
-  // 第 1 行：大标题
+  // 第 1 行：大标题（横跨整张表并居中）
   const title = blank()
   title[0] = TITLE
   rows.push(title)
-  merges.push(`A1:${colLetter(BASE_HEADERS.length)}1`)
+  merges.push(`A1:${lastCol}1`)
 
   // 第 2 行：月份 + 填报情况（汇总口径与「填报情况」页同源）
   const summary = summarize(buildRows(students, submissions))
@@ -181,28 +212,15 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
   rows.push(meta)
   merges.push('B2:C2', `E2:${lastCol}2`)
 
-  // 第 3、4 行：两行表头（基础列与末尾两列纵向合并；项目列横向合并后拆「统筹/参与」）
-  const head1 = blank()
-  BASE_HEADERS.forEach((text, i) => { head1[i] = text })
-  groups.forEach(g => { head1[BASE_HEADERS.length + g.from] = g.label })
-  TRAILING_HEADERS.forEach((text, i) => { head1[trailingFrom + i] = text })
-  const head2 = blank()
-  cols.forEach((c, i) => { head2[BASE_HEADERS.length + i] = c.label })
-  rows.push(head1, head2)
-  for (let i = 1; i <= BASE_HEADERS.length; i++) {
-    merges.push(`${colLetter(i)}3:${colLetter(i)}4`)
-  }
-  TRAILING_HEADERS.forEach((_, i) => {
-    merges.push(`${colLetter(trailingFrom + i + 1)}3:${colLetter(trailingFrom + i + 1)}4`)
-  })
-  groups.forEach(g => {
-    if (g.to > g.from) {
-      merges.push(`${colLetter(BASE_HEADERS.length + g.from + 1)}3:${colLetter(BASE_HEADERS.length + g.to + 1)}3`)
-    }
-  })
+  // 第 3 行：单行表头（一类项目一列，不再有「统筹/参与」两行）
+  const head = blank()
+  BASE_HEADERS.forEach((text, i) => { head[i] = text })
+  cols.forEach((c, i) => { head[typeFrom + i] = c.label })
+  TRAILING_HEADERS.forEach((text, i) => { head[trailingFrom + i] = text })
+  rows.push(head)
 
-  // 数一行：已提交（或月结补零）写数字，否则整行合并成状态文字
-  const makeRow = (item, first, excelRow) => {
+  // 数一行：交过（含月结补零）写数字，没交的只在「填报状态」写状态
+  const makeRow = (item, first) => {
     const { stu, sub, label } = item
     const bound = !!stu.openid
     const submitted = !!sub && sub.source !== 'auto-zero'
@@ -214,20 +232,22 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
     if (first) row[2] = label
 
     if (submitted || zeroFilled) {
-      const answers = (sub.answers || {})
-      row[3] = Number((sub.calc || {}).effectiveHours) || 0
-      row[4] = Number(answers.answer1) || 0
-      const counts = new Map((sub.projectRows || []).map(r => [r.key, r.counts || {}]))
-      cols.forEach((c, i) => {
-        const bag = counts.get(c.key)
-        row[BASE_HEADERS.length + i] = bag ? (Number(bag[c.role]) || 0) : 0
-      })
-      // 第 5、6 题原样落到末尾两列；空文本留空而不是写空字符串
-      row[trailingFrom] = textOf(answers.answer5)
-      row[trailingFrom + 1] = textOf(answers.answer6)
+      const calc = sub.calc || {}
+      const stats = projectStats(sub.projects)
+      row[3] = Number(calc.dutyHours) || 0
+      row[4] = Number(calc.projectHours) || 0
+      row[5] = Number(calc.totalHours) || 0
+      row[6] = Number(calc.effectiveHours) || 0
+      row[7] = stats.total
+      WORK_STATUS.forEach((status, i) => { row[8 + i] = stats.statuses[status] })
+      row[11] = stats.actualHours
+      row[12] = zeroFilled ? FILL.ZERO : FILL.SUBMITTED
+      // 12 个类型列：该类的折算工时（行内之和 = 项目折算工时）
+      const hours = hoursByKey(sub.projectRows)
+      cols.forEach((c, i) => { row[typeFrom + i] = hours.get(c.key) || 0 })
+      row[trailingFrom] = textOf((sub.answers || {}).answer6)
     } else {
-      row[3] = bound ? STATUS_PENDING : STATUS_UNBOUND
-      merges.push(`D${excelRow}:${lastCol}${excelRow}`)
+      row[12] = bound ? FILL.PENDING : FILL.UNBOUND
     }
     return row
   }
@@ -241,19 +261,16 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
   }
   for (const block of blocks) {
     const from = rows.length + 1
-    block.items.forEach((item, i) => rows.push(makeRow(item, i === 0, rows.length + 1)))
+    block.items.forEach((item, i) => rows.push(makeRow(item, i === 0)))
     const to = rows.length
     if (to > from) merges.push(`C${from}:C${to}`)
   }
 
   const widths = BASE_WIDTHS.slice()
-  for (const g of groups) {
-    const width = g.to > g.from ? PAIR_WIDTH : SINGLE_WIDTH
-    for (let i = g.from; i <= g.to; i++) widths.push(width)
-  }
+  cols.forEach(() => widths.push(TYPE_WIDTH))
   TRAILING_WIDTHS.forEach(width => widths.push(width))
   const rowHeights = rows.map((_, i) =>
-    i === 0 ? TITLE_HEIGHT : i === 1 ? META_HEIGHT : i < 4 ? HEAD_HEIGHT : ROW_HEIGHT
+    i === 0 ? TITLE_HEIGHT : i === 1 ? META_HEIGHT : i === 2 ? HEAD_HEIGHT : ROW_HEIGHT
   )
 
   const stamp = `${now.getFullYear()}_${pad(now.getMonth() + 1)}_${pad(now.getDate())}`
@@ -275,5 +292,5 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
 
 module.exports = {
   buildPivot, projectColumns, departmentLabel, monthText, summaryText, colLetter,
-  STYLE, TITLE, BASE_HEADERS, TRAILING_HEADERS, STATUS_UNBOUND, STATUS_PENDING
+  STYLE, TITLE, BASE_HEADERS, TRAILING_HEADERS, FILL, WORK_STATUS
 }

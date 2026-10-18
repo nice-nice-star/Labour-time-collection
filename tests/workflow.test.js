@@ -44,6 +44,12 @@ function fixture() {
 const answer = { dutyHours: 30, shiftTime: '周一上午', locationIndex: 1,
   projectRows: [{ key: 'team_activity', counts: { participant: 2, coordinator: 0 } }], projectName: '测试项目', appeal: '' }
 
+// 新版逐项填报：一条记录只算一个角色；同类型多条会汇总进 projectRows
+const teamEntry = (overrides = {}) => ({
+  key: 'team_activity', name: '运动会', role: 'participant', status: '已发布',
+  completionForm: '现场', actualHours: 2, ...overrides
+})
+
 test('开发/体验/正式版本选择环境；缺失、同环境、未知版本拒绝连接', () => {
   const config = { production: 'prod', test: 'test' }
   assert.equal(resolveCloudEnv('release', config), 'prod')
@@ -179,18 +185,22 @@ test('每个项目都有英文名，且不为空、不重复、与中文名一�
   )
 })
 
-test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly 三处完全一致', () => {
+test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly、exportData 四处完全一致', () => {
   const submitConstants = require('../cloudfunctions/submitForm/constants')
   const calcConstants = require('../cloudfunctions/calculateMonthly/constants')
+  const exportConstants = require('../cloudfunctions/exportData/constants')
   assert.deepEqual(DEPARTMENTS, submitConstants.DEPARTMENTS)
   assert.deepEqual(DEPARTMENTS, calcConstants.DEPARTMENTS)
+  assert.deepEqual(DEPARTMENTS, exportConstants.DEPARTMENTS)
   assert.deepEqual(DEPARTMENT_ALIASES, submitConstants.DEPARTMENT_ALIASES)
   assert.deepEqual(DEPARTMENT_ALIASES, calcConstants.DEPARTMENT_ALIASES)
-  // 每个别名在三处都必须归一到同一个规范值
+  assert.deepEqual(DEPARTMENT_ALIASES, exportConstants.DEPARTMENT_ALIASES)
+  // 每个别名在四处都必须归一到同一个规范值
   for (const alias of Object.keys(DEPARTMENT_ALIASES)) {
     const expected = resolveDepartment(alias)
     assert.equal(submitConstants.resolveDepartment(alias), expected, `submitForm 别名不一致: ${alias}`)
     assert.equal(calcConstants.resolveDepartment(alias), expected, `calculateMonthly 别名不一致: ${alias}`)
+    assert.equal(exportConstants.resolveDepartment(alias), expected, `exportData 别名不一致: ${alias}`)
   }
 
   // 归一化：忽略大小写与多余空白
@@ -201,11 +211,12 @@ test('部门枚举与归一化规则在小程序、submitForm、calculateMonthly
   for (const value of ['图书馆', 'Unknown_Department', '', '   ', null, undefined, 0]) {
     assert.equal(resolveDepartment(value), '', `枚举外的值未归一化为空字符串: ${value}`)
   }
-  // 三处结果必须一致（含名单里可能出现的全角等写法）
+  // 四处结果必须一致（含名单里可能出现的全角等写法）
   for (const value of ['Administration_and_Data', 'administration_and_data', '  AdministratION_AND_data  ', 'ＡＤＭＩＮＩＳＴＲＡＴＩＯＮ', '图书馆', '', null, undefined]) {
     const expected = resolveDepartment(value)
     assert.equal(submitConstants.resolveDepartment(value), expected, `submitForm 归一化不一致: ${value}`)
     assert.equal(calcConstants.resolveDepartment(value), expected, `calculateMonthly 归一化不一致: ${value}`)
+    assert.equal(exportConstants.resolveDepartment(value), expected, `exportData 归一化不一致: ${value}`)
   }
 })
 
@@ -532,7 +543,7 @@ test('Web 数据接口不吃残留的微信身份', async () => {
   assert.equal(h.uploads.length, 0)
 })
 
-test('Web 导出：一人一行 × 一项目一列的统计表，标题与合并单元格齐全', async () => {
+test('Web 导出：一人一行 × 一类项目一列，汇总字段与折算对账', async () => {
   const h = createHarness(webFixture())
   await h.call('submitForm', 'wx-b', answer)
   h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
@@ -549,8 +560,9 @@ test('Web 导出：一人一行 × 一项目一列的统计表，标题与合并
   const rows = sheet.rows.map(r => r.values)          // exceljs 桩按 Row 存，测试里取纯值
   const cell = (r, c) => rows[r - 1][c - 1]
 
-  // 单张表：标题行 + 月份/填报情况行 + 两行表头 + 3 名学助（含未绑定的人）
-  assert.equal(rows.length, 7)
+  // 单张表：标题 + 月份/填报情况 + 一行表头 + 3 名学助（含未绑定的人）
+  assert.equal(rows.length, 6)
+  assert.equal(rows[2].length, 26)
   assert.equal(cell(1, 1), 'CPRO学助工时统计表')
   assert.equal(cell(2, 1), '月份')
   assert.equal(cell(2, 2), '2026年10月')
@@ -558,65 +570,56 @@ test('Web 导出：一人一行 × 一项目一列的统计表，标题与合并
   // 汇总口径与「填报情况」页同一份 rows.js/summarize
   assert.equal(cell(2, 5), '名单 3 人：已提交 1，待提交 1，未绑定 1')
 
-  // 表头：5 个基础列 + 19 个项目列 + 末尾 2 列自由文本；有统筹费率的项目拆成「统筹/参与」两列
-  assert.deepEqual(rows[2].slice(0, 5), ['学助姓名', '学号', '部门', '有效工时', '值班工时'])
-  assert.equal(cell(3, 6), '新闻稿/通讯（800字内）')
-  assert.equal(cell(4, 6), '参与')
-  assert.equal(cell(3, 7), '人物专访（采访+成稿）')
-  assert.equal(cell(4, 7), '统筹')
-  assert.equal(cell(4, 8), '参与')
-  assert.equal(cell(3, 23), '集体活动')
-  assert.equal(cell(4, 24), '参与')
-  assert.equal(cell(3, 25), '项目名称')
+  // 表头：13 个基础列 + 12 个项目列（一类一列，不再拆统筹/参与）+ 1 个申诉列
+  assert.deepEqual(rows[2].slice(0, 13), [
+    '学助姓名', '学号', '部门', '值班工时', '项目折算工时', '总工时', '有效工时',
+    '项目条数', '已发布', '已完成未发布', '未完成', '实际耗时合计', '填报状态'
+  ])
+  assert.equal(cell(3, 14), '新闻稿/通讯（800字内）')
+  assert.equal(cell(3, 25), '集体活动')
   assert.equal(cell(3, 26), '额外工时申诉')
-  assert.equal(cell(4, 25), undefined)
-  assert.equal(rows[2].length, 26)
 
-  // 合并范围：大标题、月份值、填报情况、基础列与末尾两列的纵向表头、项目组表头
-  const verticalHeaders = ['A3:A4', 'B3:B4', 'C3:C4', 'D3:D4', 'E3:E4', 'Y3:Y4', 'Z3:Z4']
-  for (const range of ['A1:E1', 'B2:C2', 'E2:Z2', 'G3:H3', 'W3:X3', ...verticalHeaders]) {
+  // 合并只剩：大标题、月份值、填报情况、同部门的部门列；不再有整行合并
+  for (const range of ['A1:Z1', 'B2:C2', 'E2:Z2', 'C4:C5']) {
     assert.ok(sheet.merges.includes(range), `缺少合并 ${range}`)
   }
+  assert.equal(sheet.merges.some(m => m.startsWith('D')), false, '未提交不再整行合并')
 
-  // 数据行：已提交写数字（值班工时由字符串转数字），未绑定整行合并成状态文字
+  // 已提交：数值列 + 填报状态；12 个类型列之和必须等于「项目折算工时」
   const rowOf = name => rows.find(r => r[0] === name)
   const yi = rowOf('主管乙')
-  assert.equal(yi[3], 40)                       // 有效工时
-  assert.equal(yi[4], 30)                       // 值班工时：'30' → 30
-  assert.equal(yi[22], 0)                       // 集体活动·统筹
-  assert.equal(yi[23], 2)                       // 集体活动·参与
-  assert.equal(yi[24], '测试项目')               // 第 5 题原样落到「项目名称」
-  assert.equal(yi[25], undefined)               // 第 6 题没填 → 留空，不写空字符串
+  assert.deepEqual(yi.slice(3, 13), [30, 4, 51, 40, 0, 0, 0, 0, 0, '已提交'])
+  assert.equal(yi[24], 4)                         // 集体活动：2 条参与 × 费率 2
+  const typeSum = yi.slice(13, 25).reduce((n, v) => n + (Number(v) || 0), 0)
+  assert.equal(typeSum, yi[4])                    // 行内自洽
 
-  // 月结补零的人按 0 计入，不显示成「待提交」
+  // 月结补零：数字全 0，状态写「月结补零」
   const jia = rowOf('学助甲')
-  assert.equal(jia[3], 0)
-  assert.equal(jia[4], 0)
-  assert.equal(jia[23], 0)
+  assert.deepEqual(jia.slice(3, 13), [0, 0, 0, 0, 0, 0, 0, 0, 0, '月结补零'])
+  assert.equal(jia.slice(13, 25).every(v => v === 0), true)
 
+  // 未绑定：只在「填报状态」写状态，不再整行合并
   const bing = rowOf('待绑定丙')
-  assert.equal(bing[3], '未绑定')
-  assert.equal(bing[4], undefined)
-  assert.ok(sheet.merges.includes('D7:Z7'), '未绑定行应整行合并到最后一列')
+  assert.equal(bing[12], '未绑定')
+  assert.equal(bing[3], undefined)
+  assert.equal(bing[13], undefined)
 
   // 同一部门的人合并「部门」列；部门显示为「中文 英文」
-  assert.equal(cell(5, 3), '行政与数据 Administration and Data')
-  assert.equal(cell(6, 3), undefined)
-  assert.ok(sheet.merges.includes('C5:C6'), '同部门的部门列应纵向合并')
+  assert.equal(cell(4, 3), '行政与数据 Administration and Data')
+  assert.equal(cell(5, 3), undefined)
 
-  // 表头：品牌紫底 + 白字加粗居中；合并块里每一格都要上色，不能只染左上角
+  // 表头：品牌紫底 + 白字加粗居中，长项目名允许换行
   assert.equal(sheet.getCell(3, 1).fill.fgColor.argb, 'FF732160')
   assert.equal(sheet.getCell(3, 1).font.bold, true)
   assert.equal(sheet.getCell(3, 1).font.color.argb, 'FFFFFFFF')
   assert.equal(sheet.getCell(3, 1).alignment.horizontal, 'center')
-  assert.equal(sheet.getCell(4, 8).fill.fgColor.argb, 'FF732160')   // G3:H3 合并块右半格
-  assert.equal(sheet.getCell(4, 24).fill.fgColor.argb, 'FF732160')  // W3:X3 合并块右半格
+  assert.equal(sheet.getCell(3, 14).alignment.wrapText, true)
+  assert.equal(sheet.getCell(3, 26).fill.fgColor.argb, 'FF732160')
 
   // 表体（含表头）逐格细边框；标题行与填报情况行不描边
   assert.equal(sheet.getCell(3, 1).border.top.style, 'thin')
-  assert.equal(sheet.getCell(6, 1).border.top.style, 'thin')
-  assert.equal(sheet.getCell(7, 24).border.bottom.style, 'thin')
-  assert.equal(sheet.getCell(7, 4).border.bottom.style, 'thin')     // 合并状态格也要描边
+  assert.equal(sheet.getCell(4, 1).border.top.style, 'thin')
+  assert.equal(sheet.getCell(6, 26).border.bottom.style, 'thin')
   assert.equal(sheet.getCell(2, 1).border, undefined)
   assert.equal(sheet.getCell(1, 1).border, undefined)
 
@@ -625,12 +628,13 @@ test('Web 导出：一人一行 × 一项目一列的统计表，标题与合并
   assert.equal(sheet.getCell(1, 1).font.size, 14)
   assert.equal(sheet.getCell(1, 1).font.color.argb, 'FF732160')
 
-  // 列宽/行高由 pivot.js 给定，且列数与表头一致
+  // 列宽/行高：26 列，表头行加高给换行让位
   assert.equal(sheet.cols.length, 26)
   assert.ok(sheet.cols[0].width > 0)
   assert.ok(sheet.cols[25].width > 0)
   assert.equal(sheet.rows[0].height, 22)
-  assert.equal(sheet.rows[4].height, 13)
+  assert.equal(sheet.rows[2].height, 30)
+  assert.equal(sheet.rows[3].height, 13)
 })
 
 test('Web 统计表：名单里所有部门都会导出，未知/已移除的部门各自成块', () => {
@@ -659,36 +663,29 @@ test('Web 统计表：名单里所有部门都会导出，未知/已移除的部
   ])
   assert.deepEqual(labels.slice(3).sort(), ['CPRO', '图书馆', '未设置'].sort())
   assert.equal(model.departments.reduce((n, d) => n + d.count, 0), 7)
-  assert.equal(model.rows.length, 4 + 7)     // 标题 + 月份 + 两行表头 + 7 人
+  assert.equal(model.rows.length, 3 + 7)     // 标题 + 月份 + 表头 + 7 人
 
   // 只有「同一部门且多于一人」才纵向合并部门列；别名写法要能并到一起
-  assert.deepEqual(model.merges.filter(m => /^C[5-9]\d*:C\d+$/.test(m)), ['C6:C7'])
-  assert.ok(model.merges.includes('D5:Z5') && model.merges.includes('D11:Z11'))
-  // 末尾两列不参与项目列的合并，只是各自纵向合并表头
-  assert.ok(model.merges.includes('Y3:Y4') && model.merges.includes('Z3:Z4'))
+  assert.deepEqual(model.merges.filter(m => /^C[4-9]\d*:C\d+$/.test(m)), ['C5:C6'])
+  // 未提交不再整行合并（状态改写在「填报状态」列），表头也是单行，没有纵向表头合并
+  assert.equal(model.merges.some(m => m.startsWith('D')), false)
+  assert.ok(model.merges.includes('A1:Z1') && model.merges.includes('E2:Z2'))
 })
 
-test('Web 统计表的项目列与小程序端 PROJECT_ROWS 同源：顺序、文案、单一/双列都不许漂移', () => {
+test('Web 统计表的项目列与小程序端 PROJECT_ROWS 同源：顺序、文案都不许漂移', () => {
   const { PROJECT_ROWS, PROJECT_HOURS } = require('../miniprogram/config/constants')
   const webRows = require('../cloudfunctions/webExportData/projectRows')
   const { projectColumns } = require('../cloudfunctions/webExportData/pivot')
 
   assert.deepEqual(webRows.PROJECT_ROWS, PROJECT_ROWS, 'projectRows.js 副本与小程序端不一致')
 
-  const { cols, groups } = projectColumns()
+  // 一类项目一列：key 与表头文案都要跟小程序端一致
+  const cols = projectColumns()
   const withRate = PROJECT_ROWS.filter(row => PROJECT_HOURS[row.key].participant != null)
-  assert.deepEqual(groups.map(g => g.label), withRate.map(row => row.label))
-  assert.deepEqual(
-    groups.map(g => g.to - g.from + 1),
-    withRate.map(row => (PROJECT_HOURS[row.key].coordinator != null ? 2 : 1))
-  )
-  assert.deepEqual(
-    cols.map(c => c.key),
-    withRate.flatMap(row => (PROJECT_HOURS[row.key].coordinator != null ? [row.key, row.key] : [row.key]))
-  )
+  assert.deepEqual(cols, withRate.map(row => ({ key: row.key, label: row.label })))
   // 「按实际/待定」的接待活动、管理项目没有列，但仍然留在 PROJECT_ROWS 里
-  assert.equal(groups.length, 12)
-  assert.equal(cols.length, 19)
+  assert.equal(cols.length, 12)
+  assert.equal(PROJECT_ROWS.length, 14)
 })
 
 test('Web 统计表：部门显示为「中文 英文」，枚举外的旧值原样输出', () => {
@@ -870,13 +867,13 @@ test('无表单、已关闭、已计算、超过截止时间均拒绝提交', as
   }
 })
 
-test('完整工作流：提交、到期关闭、未提交补零、重复计算、导出数据', async () => {
+test('完整工作流：提交、到期关闭、未提交补零、重复计算、两张表导出', async () => {
   const h = createHarness(fixture())
-  await h.call('submitForm', 'wx-b', answer)
+  await h.call('submitForm', 'wx-b', { ...answer, projects: [teamEntry(), teamEntry()] })
   assert.equal(h.tables.submissions[0].calc.projectHours, 4)
   assert.equal(h.tables.submissions[0].calc.totalHours, 51)   // 主管：(30 + 4) × 1.5
   assert.equal(h.tables.submissions[0].calc.effectiveHours, 40)
-  // 落库行结构：保留稳定键与中文名，两个角色分别计数
+  // 同类型两条申报在落库时汇总成一个计数
   assert.deepEqual(h.tables.submissions[0].projectRows, [
     { key: 'team_activity', label: '集体活动', counts: { participant: 2, coordinator: 0 } }
   ])
@@ -893,32 +890,37 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   assert.equal(exported.filename, '2026_10_15学助工时明细.xlsx')
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
   assert.equal(sheets.length, 2)
-  assert.equal(sheets[0].name, '2026-10')
-  assert.equal(sheets[0].data.length, 3)
-  // 主表不再放第四题明细，改为末尾的「项目明细」工作表
-  assert.deepEqual(sheets[0].data[0], ['姓名', '部门', '有效工时', '值班总工时', '值班时段', '值班地点', '项目名称', '额外工时申诉'])
-  // 部门列：已提交者取提交时快照，未提交者取补零时的名单值；导出时换成中文名
-  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[1], '行政与数据')
-  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[1], '行政与数据')
-  assert.equal(sheets[0].data.find(row => row[0] === '主管乙')[2], 40)
-  assert.equal(sheets[0].data.find(row => row[0] === '学助甲')[2], 0)
 
-  // 项目明细：每人每个申报项目一行；学助甲由月结补零、projectRows 为空，不产生明细行
+  // 汇总：一人一行，含未提交/未绑定；有效工时 = 值班 + 项目 → 主管 ×1.5 → 封顶 40
+  assert.equal(sheets[0].name, '2026-10')
+  assert.deepEqual(sheets[0].data[0], ['姓名', '学号', '部门', '值班工时', '项目折算工时', '总工时', '有效工时', '项目条数', '已发布', '已完成未发布', '未完成', '实际耗时合计', '填报状态', '额外工时申诉'])
+  assert.equal(sheets[0].data.length, 4)   // 表头 + 3 名学助（含未绑定）
+  const summary = name => sheets[0].data.find(row => row[0] === name)
+  assert.deepEqual(summary('主管乙'), ['主管乙', 'S2', '行政与数据', 30, 4, 51, 40, 2, 2, 0, 0, 4, '已提交', ''])
+  assert.equal(summary('学助甲')[6], 0)
+  assert.equal(summary('学助甲')[12], '月结补零')
+  assert.equal(summary('待绑定丙')[12], '未绑定')
+  assert.equal(summary('待绑定丙')[3], '')
+
+  // 项目明细：一条申报一行（同类型两条 → 两行）
   assert.equal(sheets[1].name, '项目明细')
-  assert.deepEqual(sheets[1].data[0], ['姓名', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时'])
-  assert.equal(sheets[1].data.length, 2)
-  assert.deepEqual(sheets[1].data[1], ['主管乙', '行政与数据', '集体活动', '', '', '', '', '', 2, 0, 4])
+  assert.deepEqual(sheets[1].data[0], ['姓名', '学号', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时', '实际−折算'])
+  assert.equal(sheets[1].data.length, 3)
+  assert.deepEqual(sheets[1].data.slice(1), [
+    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 2, 0],
+    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 2, 0]
+  ])
 })
 
-test('项目明细工作表：一人多项目、统筹列、按实际留空、全 0 行不写', async () => {
+test('项目明细工作表：一条申报一行、完成情况与折算工时、按实际留空', async () => {
   const h = createHarness(fixture())
   await h.call('submitForm', 'wx-a', {
     ...answer,
-    projectRows: [
-      { key: 'team_activity', counts: { participant: 2, coordinator: 1 } },   // 2×2 + 8×1 = 12
-      { key: 'poster', counts: { participant: 3, coordinator: 0 } },          // 3×1 = 3
-      { key: 'reception', counts: { participant: 2, coordinator: 0 } },       // 按实际 → 折算工时留空
-      { key: 'news_article', counts: { participant: 0, coordinator: 0 } }     // 全 0 → 不写
+    projects: [
+      { key: 'team_activity', name: '团建', role: 'coordinator', status: '已完成未发布', completionForm: '待发', actualHours: 6 },
+      { key: 'poster', name: '海报A', role: 'participant', status: '已发布', completionForm: '公众号', actualHours: 1 },
+      { key: 'poster', name: '海报B', role: 'participant', status: '未完成', completionForm: '—', actualHours: 0 },
+      { key: 'reception', name: '接待', role: 'participant', status: '已发布', completionForm: '现场', actualHours: 3 }
     ]
   })
   const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
@@ -926,15 +928,20 @@ test('项目明细工作表：一人多项目、统筹列、按实际留空、�
   const sheets = JSON.parse(h.uploads[0].fileContent.toString())
   const detail = sheets[1]
   assert.equal(detail.name, '项目明细')
-  assert.deepEqual(detail.data[0], ['姓名', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时'])
+  assert.deepEqual(detail.data[0], ['姓名', '学号', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时', '实际−折算'])
+  // 同类型两条海报各占一行；接待活动没有费率，折算与差异留空
   assert.deepEqual(detail.data.slice(1), [
-    ['学助甲', '行政与数据', '集体活动', '', '', '', '', '', 2, 1, 12],
-    ['学助甲', '行政与数据', '海报设计', '', '', '', '', '', 3, 0, 3],
-    ['学助甲', '行政与数据', '接待活动', '', '', '', '', '', 2, 0, '']
+    ['学助甲', 'S1', '行政与数据', '集体活动', '团建', '统筹', '已完成未发布', '待发', 6, 0, 1, 8, -2],
+    ['学助甲', 'S1', '行政与数据', '海报设计', '海报A', '参与', '已发布', '公众号', 1, 1, 0, 1, 0],
+    ['学助甲', 'S1', '行政与数据', '海报设计', '海报B', '参与', '未完成', '—', 0, 1, 0, 1, -1],
+    ['学助甲', 'S1', '行政与数据', '接待活动', '接待', '参与', '已发布', '现场', 3, 1, 0, '', '']
   ])
-  // 主表仍是一人一行，且不含明细列
-  assert.equal(sheets[0].data.length, 2)
-  assert.equal(sheets[0].data[1].length, 8)
+  // 汇总：未完成也计入折算工时；条数、各完成状态与实际耗时合计都要对得上
+  const row = sheets[0].data.find(r => r[0] === '学助甲')
+  assert.deepEqual(row.slice(3), [30, 10, 40, 40, 4, 2, 1, 1, 10, '已提交', ''])
+
+  // 只保留汇总与项目明细两张表
+  assert.equal(sheets.length, 2)
 })
 
 test('部门：按名单落库快照，枚举外与缺失写空字符串，事件参数无法伪造', async () => {
@@ -951,7 +958,7 @@ test('部门：按名单落库快照，枚举外与缺失写空字符串，事�
 
 test('部门：未提交者补零同样带部门，导出取提交时的快照而非当前名单', async () => {
   const seed = fixture()
-  seed.students[1].department = '图书馆'          // 枚举外：补零行应写空字符串
+  seed.students[1].department = '图书馆'          // 枚举外：补零快照归一化成空，展示时退回名单原值
   seed.students.push({ _id: 'd', name: '主管丁', studentId: 'S4', openid: 'wx-d', isSupervisor: true, department: ' administration_and_data ' })
   const h = createHarness(seed)
   await h.call('submitForm', 'wx-a', answer)
@@ -963,36 +970,28 @@ test('部门：未提交者补零同样带部门，导出取提交时的快照�
   assert.equal(exported.ok, true)
   const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
   const rowOf = name => sheet.data.find(row => row[0] === name)
-  assert.equal(rowOf('学助甲')[1], '行政与数据')     // 提交时的快照
-  assert.equal(rowOf('主管乙')[1], '')               // 补零行：名单枚举外 → 空字符串
-  assert.equal(rowOf('主管丁')[1], '行政与数据')     // 补零行：名单小写带空格 → 归一化再转中文
+  assert.equal(rowOf('学助甲')[2], '行政与数据')     // 提交时的快照
+  assert.equal(rowOf('主管乙')[2], '图书馆')         // 补零快照为空 → 退回名单原值，枚举外原样输出
+  assert.equal(rowOf('主管丁')[2], '行政与数据')     // 补零行：名单小写带空格 → 归一化再转中文
 })
 
-test('部门：历史提交缺字段导出为空字符串，已移除的旧部门原样输出且不报错', async () => {
+test('汇总：名单驱动，未提交与未绑定都出行，枚举外的部门原样输出', async () => {
   const seed = fixture()
-  seed.submissions = [{
-    _id: 'legacy', formId: 'f', month: '2026-10', openid: 'wx-a',
-    studentId: 'S1', name: '学助甲', isSupervisor: false,   // 旧数据：没有 department 字段
-    answers: { answer1: '30', answer2: '', answer3: 'ABE303', answer4: '见 projectRows', answer5: '', answer6: '' },
-    projectRows: [], calc: { dutyHours: 30, projectHours: 0, totalHours: 30, effectiveHours: 40 },
-    createTime: '2026-10-01', updateTime: '2026-10-01'
-  }, {
-    _id: 'legacy-removed', formId: 'f', month: '2026-10', openid: 'wx-b',
-    studentId: 'S2', name: '主管乙', isSupervisor: true,
-    department: 'CPRO',   // 已从部门枚举移除的旧快照：不在中文映射表里
-    answers: { answer1: '20', answer2: '周一上午', answer3: 'ABE303', answer4: '见 projectRows', answer5: '', answer6: '' },
-    projectRows: [], calc: { dutyHours: 20, projectHours: 0, totalHours: 30, effectiveHours: 30 },
-    createTime: '2026-10-01', updateTime: '2026-10-01'
-  }]
+  seed.students[0].department = 'CPRO'   // 已从枚举移除的旧值
   const h = createHarness(seed)
   const exported = await h.call('exportData', 'wx-teacher', { formId: 'f' })
   assert.equal(exported.ok, true)
-  const sheet = JSON.parse(h.uploads[0].fileContent.toString())[0]
-  assert.equal(sheet.data.length, 3)
-  const rowOf = name => sheet.data.find(row => row[0] === name)
-  assert.equal(rowOf('学助甲').length, 8)      // 主表已移除第四题明细，旧行也要补齐到 8 列
-  assert.equal(rowOf('学助甲')[1], '')         // 缺部门字段 → 空字符串，不是 undefined 或报错
-  assert.equal(rowOf('主管乙')[1], 'CPRO')     // 查不到中文名 → 原样输出，不静默清空
+  const sheets = JSON.parse(h.uploads[0].fileContent.toString())
+  assert.equal(sheets[0].data.length, 4)          // 表头 + 3 人
+  const rowOf = name => sheets[0].data.find(row => row[0] === name)
+  assert.equal(rowOf('学助甲')[2], 'CPRO')         // 枚举外：原样输出，不静默清空
+  assert.equal(rowOf('学助甲')[12], '未提交')
+  assert.equal(rowOf('主管乙')[2], '行政与数据')   // 名单别名写法 → 归一化再转中文
+  assert.equal(rowOf('待绑定丙')[2], '')
+  assert.equal(rowOf('待绑定丙')[12], '未绑定')
+  // 没有项目时项目明细只有表头
+  assert.equal(sheets.length, 2)
+  assert.equal(sheets[1].data.length, 1)
 })
 
 test('部门中文名映射在小程序与 exportData 两处一致，覆盖全部枚举', () => {
@@ -1135,11 +1134,12 @@ test('逐项填报：同类型汇总、耗时与状态不影响折算、双端�
   assert.equal(saved.projectRows[0].counts.participant, 1)
   assert.equal(saved.projectRows[0].counts.coordinator, 1)
   const { buildSheets } = require('../cloudfunctions/exportData/exportCore')
-  const details = buildSheets({ month: '2026-10' }, [saved]).sheets[1].data
-  assert.deepEqual(details[1].slice(2), ['海报设计', '迎新海报', '统筹', '已发布', '公众号', 7.5, 0, 1, 3])
+  const details = buildSheets({ month: '2026-10' }, [saved], fixture().students).sheets[1].data
+  // 明细列：姓名/学号/部门之后是项目字段，末尾多一列「实际−折算」（7.5 − 3 = 4.5）
+  assert.deepEqual(details[1].slice(3), ['海报设计', '迎新海报', '统筹', '已发布', '公众号', 7.5, 0, 1, 3, 4.5])
   const { buildPivot } = require('../cloudfunctions/webExportData/pivot')
   const pivot = buildPivot({ form: { month: '2026-10' }, students: fixture().students, submissions: [saved] })
-  assert.deepEqual(pivot.detailRows.map(r => r.slice(2)), details.map(r => r.slice(2)))
+  assert.deepEqual(pivot.detailRows.map(r => r.slice(3)), details.map(r => r.slice(3)))
   const changed = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 2, projects: [project({ actualHours: 0 })] })
   assert.equal(changed.calc.projectHours, 3)
   assert.equal(h.tables.submissions.length, 1)
