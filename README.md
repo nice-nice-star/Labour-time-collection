@@ -206,20 +206,20 @@ else :
 
 | 交付物                 | 标准工时（参考）| 统筹（取上限）  | 参与（取下限）  | 档级（这一项先不管）   |	项目英文翻译                                                     |
 | ---------------------- | --------------- | --------------- | --------------- | ---------------------- | -----------------------------------------------------------------  |
-| 新闻稿/通讯（800字内） | 2 h	           | —（仅参与）     | 2 h             | 标准	                | News article / newsletter report (within 800 words)                |
-| 人物专访（采访+成稿）	 | 3–6 h	       | 6 h             | 3 h             | 复杂               	| Feature interview (conducting the interview + writing the article) |
-| 深度报道（文字或视频） | 4–8 h	       | 8 h             | 4 h             | 复杂               	| In-depth report (written or video)                                 |
-| 推文文案	             | 1.5 h	       | —（仅参与）     | 1.5 h           | 标准               	| Social media post copywriting                                      |
-| 图文排版	             | 1–2 h	       | 2 h             | 1 h             | 标准               	| Graphic-and-text layout design                                     |
-| 海报设计	             | 1–3 h	       | 3 h             | 1 h             | 标准               	| Poster design                                                      |
-| 推文长图	             | 2–4 h	       | 4 h             | 2 h             | 复杂               	| Long-form graphic for social media posts                           |
-| 短视频剪辑（≤1分钟）	 | 2 h	           | —（仅参与）     | 2 h             | 标准               	| Short video editing (≤1 minute)                                    |
-| 短视频剪辑（1–3分钟）	 | 2–4 h	       | 4 h             | 2 h             | 复杂               	| Short video editing (1–3 minutes)                                  |
-| 活动跟拍（半天）	     | 4 h	           | —（仅参与）     | 4 h             | 计时               	| Event photo/video coverage (half day)                              |
-| 数据报表               | 2 h	           | —（仅参与）     | 2 h             | 标准               	| Data report                                                        |
+| 新闻稿/通讯（800字内） | 2 h	           | 5 h             | 1.5 h           | 标准	                | News article / newsletter report (within 800 words)                |
+| 人物专访（采访+成稿）	 | 3–6 h	       | 10 h            | 3 h             | 复杂               	| Feature interview (conducting the interview + writing the article) |
+| 深度报道（文字或视频） | 4–8 h	       | 10 h            | 3 h             | 复杂               	| In-depth report (written or video)                                 |
+| 推文文案	             | 1.5 h	       | 5 h             | 1.5 h           | 标准               	| Social media post copywriting                                      |
+| 图文排版	             | 1–2 h	       | 3 h             | 1 h             | 标准               	| Graphic-and-text layout design                                     |
+| 图片与海报设计         | 1–3 h	       | 5 h             | 1.5 h           | 标准               	| Illustration and Poster design                                     |
+| 推文长图	             | 2–4 h	       | 5 h             | 1.5 h           | 复杂               	| Long-form graphic for social media posts                           |
+| 短视频制作（≤1分钟）	 | 2 h	           | 5 h             | 1.5 h           | 标准               	| Short video editing (≤1 minute)                                    |
+| 长视频                 | 2–4 h	       | 10 h            | 3 h             | 复杂               	| Long video editing                                                 |
+| 活动跟拍（半天）	     | 4 h	           | —（仅参与）     | 5 h             | 计时               	| Event photo/video coverage (half day)                              |
+| 数据报表               | 2 h	           | —（仅参与）     | 3 h             | 标准               	| Data report                                                        |
 | 接待活动               | 按实际	       | —               | 待定            | 计时               	| Reception / hospitality duties                                     |
 | 管理项目               | 按实际	       | —               | 待定            | 计时               	| Management project                                                 |
-| 集体活动               | 2-8h	           | 8 h             | 2 h             | 标准               	| Team / group activity                                              |
+| 集体活动               | 2-8h	           | 10 h            | 3 h             | 标准               	| Team / group activity                                              |
 
 代码里的权威来源是 `miniprogram/config/constants.js` 的 `PROJECT_HOURS`（键为稳定键，
 每项形如 `{ participant, coordinator }`）；表单模板通过 `pages/form/rates.wxs` 读取同一份
@@ -298,10 +298,12 @@ else :
 
 - [ ] 老师也需要分部门，每个部门优先查看自己部门的学助
 - [ ] 学助的指导老师，临时学助给徐涵老师
-- [ ] 值班工时占位符：playerName每个月不超过12个小时
-- [ ] 学助中英文版本，老师只需要中文。
-- [ ] 不体现预估公式
-- [ ] 保留额外工时申诉
+- [x] 值班工时占位符：playerName每个月不超过12个小时
+- [ ] **学助中英文版本，老师只需要中文。**
+- [x] 不体现预估公式
+- [x] 保留额外工时申诉
+- [ ] 按照完成时间加权。未完成$\times 0.2$，完成$\times 0.5$，已发布$\times 1$。
+- [ ] 统筹$\times 1$，参与$\times 0.3$。
 
 项目工时部分：
 - 项目类型：<selectbox></selectbox>
