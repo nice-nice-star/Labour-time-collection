@@ -5,8 +5,8 @@
   "projectname": "labour-time-collection",
   "compileType": "miniprogram",
   "setting": {
-    "es6": false,
-    "enhance": false,
+    "es6": true,
+    "enhance": true,
     "minified": true,
     "urlCheck": true,
     "postcss": false,
