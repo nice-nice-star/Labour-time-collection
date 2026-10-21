@@ -12,7 +12,7 @@ const messages = {
     "closedNotice": "本月填报已截止，以下为你的工时记录。",
     "savedNotice": "本月记录已提交。截止前可修改，再次提交后将更新记录。",
     "duty": "值班记录",
-    "basic": "基础工时",
+    "basic": "未填写工时按 0 小时计",
     "dutyTotal": "本月值班总工时",
     "dutyHint": "上限不得超过12小时",
     "hours": "小时",
@@ -69,8 +69,8 @@ const messages = {
     "deadline": "Deadline",
     "closedNotice": "Reporting has closed for this month. Your work hours are shown below.",
     "savedNotice": "Your report has been submitted. You can edit and resubmit it before the deadline.",
-    "duty": "Duty records",
-    "basic": "Duty hours",
+    "duty": "Duty records (optional)",
+    "basic": "Blank hours count as 0",
     "dutyTotal": "Total duty hours this month",
     "dutyHint": "Maximum 12 hours",
     "hours": "hrs",
@@ -118,6 +118,7 @@ const messages = {
 }
 
 const errors = {
+  '请填写有效的值班工时': 'Enter valid duty hours',
   '未绑定的学助': 'Your student account is not linked',
   '本月暂无可用表单': 'No report is available this month',
   '表单已截止，无法提交': 'Reporting is closed. Submissions are disabled.',

@@ -1,6 +1,7 @@
 // cloudfunctions/submitForm/index.js
 const cloud = require('wx-server-sdk')
 const { normalizeProjects, projectCounts } = require('./projects')
+const { weightedHoursByKey, roundHours } = require('./project-weighting')
 const {
   normalizeProjectRows,
   rateOf,
@@ -12,7 +13,7 @@ const db = cloud.database()
 
 const LOCATIONS = LOCATION_OPTIONS
 
-function calc(answers, projectRows, isSupervisor) {
+function calc(answers, projectRows, isSupervisor, projects = []) {
   const duty = Number(answers.answer1) || 0
   let project = 0
   projectRows.forEach(r => {
@@ -24,8 +25,11 @@ function calc(answers, projectRows, isSupervisor) {
       project += rate * (Number(counts[role]) || 0)
     })
   })
+  weightedHoursByKey(projects).forEach(hours => { project += hours })
+  project = roundHours(project)
   let total = duty + project
   if (isSupervisor) total = total * 1.5
+  total = roundHours(total)
   const effective = Math.min(40, total) // 先应用主管倍率，再按 40 小时封顶
   return { dutyHours: duty, projectHours: project, totalHours: total, effectiveHours: effective }
 }
@@ -65,9 +69,16 @@ exports.main = async (event) => {
   } else if (previous && Array.isArray(previous.projects)) {
     return { ok: false, msg: '请更新小程序后修改逐项填报记录' }
   }
+  // 值班记录选填；缺省、空字符串和空白均按 0 小时保存，非法输入仍拒绝。
+  const dutyText = dutyHours == null ? '' : String(dutyHours).trim()
+  const normalizedDutyHours = Number(dutyText)
+  if ((dutyHours != null && !['string', 'number'].includes(typeof dutyHours)) ||
+      !Number.isFinite(normalizedDutyHours) || normalizedDutyHours < 0) {
+    return { ok: false, msg: '请填写有效的值班工时' }
+  }
   // 组装答案
   const answers = {
-    answer1: String(dutyHours || '').trim(),
+    answer1: String(normalizedDutyHours),
     answer2: String(shiftTime || '').trim(),
     answer3: LOCATIONS[locationIndex] || '',
     answer4: '见 projectRows',
@@ -76,7 +87,7 @@ exports.main = async (event) => {
   }
   // 归一化为 { key, label, counts:{participant,coordinator} }，落库保留 label 作为导出文本
   const rows = hasProjects ? projectCounts(projects, legacyProjectRows) : normalizeProjectRows(projectRows)
-  const calcResult = calc(answers, rows, !!stu.isSupervisor)
+  const calcResult = calc(answers, hasProjects ? legacyProjectRows : rows, !!stu.isSupervisor, projects)
 
   const data = {
     formId: form._id,

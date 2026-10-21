@@ -105,8 +105,8 @@ Page({
     if (this.data.submitting || this.data.loading || this.data.loadError) return
     if (this.data.closed) return wx.showToast({ title: this.data.t.closedError, icon: 'none' })
     const { dutyHours, shiftTime, locationIndex, projects, appeal } = this.data
-    if (dutyHours === '' || !Number.isFinite(Number(dutyHours)) || Number(dutyHours) < 0) return wx.showToast({ title: this.data.t.invalidDuty, icon: 'none' })
-    if (locationIndex < 0) return wx.showToast({ title: this.data.t.selectLocation, icon: 'none' })
+    const normalizedDutyHours = Number(dutyHours == null ? '' : dutyHours)
+    if (!Number.isFinite(normalizedDutyHours) || normalizedDutyHours < 0) return wx.showToast({ title: this.data.t.invalidDuty, icon: 'none' })
 
     let normalizedProjects
     try { normalizedProjects = normalizeProjects(projects) }
@@ -115,7 +115,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'submitForm',
-        data: { dutyHours, shiftTime, locationIndex, projects: normalizedProjects, appeal }
+        data: { dutyHours: normalizedDutyHours, shiftTime, locationIndex, projects: normalizedProjects, appeal }
       })
       const r = res.result
       if (!r.ok) return wx.showToast({ title: translateError(r.msg, this.data.language, this.data.t.failed), icon: 'none' })

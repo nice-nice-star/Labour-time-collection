@@ -8,6 +8,7 @@
 const { projectDetails } = require('./projectDetails')
 const { PROJECT_HOURS, hoursOfRow } = require('./constants')
 const { PROJECT_ROWS } = require('./projectRows')
+const { weightedHoursByKey, roundHours } = require('./project-weighting')
 const { buildRows, summarize } = require('./rows')
 const {
   DEPARTMENTS, DEPARTMENT_LABELS, DEPARTMENT_ALIASES, resolveDepartment
@@ -88,16 +89,16 @@ function projectColumns() {
 }
 
 /**
- * 每人每类项目的折算工时：按 projectRows（含旧版结转的计数）汇总，
+ * 每人每类项目的折算工时：逐条加权，再加上旧版结转的计数工时，
  * 这样 12 个类型列之和恰好等于 calc.projectHours，老师可以行内对账。
  * @returns {Map<string, number>}
  */
-function hoursByKey(projectRows) {
-  const map = new Map()
+function hoursByKey(projectRows, projects = []) {
+  const map = weightedHoursByKey(projects)
   ;(projectRows || []).forEach(row => {
     const hours = hoursOfRow(row.key, row.counts)
     if (hours == null) return          // 按实际项目没有费率，不参与折算
-    map.set(row.key, (map.get(row.key) || 0) + hours)
+    map.set(row.key, roundHours((map.get(row.key) || 0) + hours))
   })
   return map
 }
@@ -243,7 +244,7 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
       row[11] = stats.actualHours
       row[12] = zeroFilled ? FILL.ZERO : FILL.SUBMITTED
       // 12 个类型列：该类的折算工时（行内之和 = 项目折算工时）
-      const hours = hoursByKey(sub.projectRows)
+      const hours = hoursByKey(Array.isArray(sub.projects) ? sub.legacyProjectRows : sub.projectRows, sub.projects)
       cols.forEach((c, i) => { row[typeFrom + i] = hours.get(c.key) || 0 })
       row[trailingFrom] = textOf((sub.answers || {}).answer6)
     } else {

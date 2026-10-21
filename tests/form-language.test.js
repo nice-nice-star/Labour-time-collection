@@ -47,7 +47,7 @@ test('默认中文、英文校验与网络提示、语言恢复不清空输入',
   const h = harness(undefined)
   h.page.onShow()
   assert.equal(h.page.data.language, 'zh')
-  h.page.setData({ appeal: 'Keep this draft', loading: false })
+  h.page.setData({ appeal: 'Keep this draft', loading: false, dutyHours: '-1' })
   h.wx.getStorageSync = () => 'en'
   h.page.onShow()
   assert.equal(h.page.data.appeal, 'Keep this draft')
@@ -58,4 +58,27 @@ test('默认中文、英文校验与网络提示、语言恢复不清空输入',
   assert.equal(h.page.data.loadError, messages.en.network)
   assert.equal(translateError('请完整填写项目2，实际完成时间须为非负数', 'en', ''), 'Complete all fields for project 2 and enter non-negative hours.')
   assert.equal(translateError('已过截止时间', 'en', ''), 'The deadline has passed')
+})
+
+test('值班记录选填：中英文页面留空可提交，非空合法工时保留，非法工时拒绝', async () => {
+  for (const language of ['zh', 'en']) {
+    for (const dutyHours of ['', '   ', '0', '2.5']) {
+      const h = harness(language)
+      h.page.onShow()
+      h.page.setData({ loading: false, dutyHours })
+      await h.page.submit()
+      assert.equal(h.sent().data.dutyHours, Number(dutyHours))
+      assert.equal(h.sent().data.shiftTime, '')
+      assert.equal(h.sent().data.locationIndex, -1)
+      assert.equal(h.toast(), messages[language].success)
+    }
+    for (const dutyHours of ['-1', 'abc', 'Infinity']) {
+      const h = harness(language)
+      h.page.onShow()
+      h.page.setData({ loading: false, dutyHours })
+      await h.page.submit()
+      assert.equal(h.sent(), undefined)
+      assert.equal(h.toast(), messages[language].invalidDuty)
+    }
+  }
 })

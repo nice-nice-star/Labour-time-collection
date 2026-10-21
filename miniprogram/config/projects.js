@@ -1,4 +1,4 @@
-// 项目明细与折算计数分开保存；实际耗时、完成状态不参与折算。
+// 项目明细与折算计数分开保存；实际耗时只作记录，完成状态与分工系数在 project-weighting.js 中参与折算。
 const { PROJECT_ROWS, normalizeProjectRows } = require('./constants')
 const STATUS_OPTIONS = ['已发布', '已完成未发布', '未完成']
 function normalizeProjects(projects) {
