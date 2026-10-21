@@ -19,3 +19,9 @@
 .project-choices label { display: flex; align-items: center; }
 .project-choices radio { transform: scale(.8); }
 .legacy-project { display: block; margin-top: 12rpx; }
+.form-page .section-heading { flex-wrap: wrap; gap: 12rpx; }
+.form-page .picker { height: auto; min-height: 88rpx; }
+.form-page .picker text:first-child { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; }
+.form-page .chevron { flex-shrink: 0; margin-left: 12rpx; }
+.project-choices label { max-width: 100%; }
+.project-choices radio { flex-shrink: 0; }

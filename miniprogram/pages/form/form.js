@@ -1,21 +1,24 @@
 // miniprogram/pages/form/form.js
 const app = getApp()
 let nextProjectId = 0
-const { PROJECT_ROWS, LOCATION_OPTIONS } = require('../../config/constants')
+const { PROJECT_ROWS, PROJECT_LABELS, PROJECT_LABELS_EN, LOCATION_OPTIONS } = require('../../config/constants')
 const { STATUS_OPTIONS, normalizeProjects } = require('../../config/projects')
+const { messages, translateError } = require('../../config/form-i18n')
 
 Page({
   data: {
+    language: 'zh', t: messages.zh, projectLabels: PROJECT_LABELS,
     month: '', deadline: '', status: '',
     closed: false, loading: true, loadError: '', hasSubmission: false,
     dutyHours: '', shiftTime: '', locationIndex: -1,
     locationOptions: LOCATION_OPTIONS,
-    projectOptions: PROJECT_ROWS, statusOptions: STATUS_OPTIONS, projects: [], legacyProjectRows: [],
+    projectOptions: PROJECT_ROWS, statusOptions: STATUS_OPTIONS.map(value => ({ value, label: value })), projects: [], legacyProjectRows: [],
     projectName: '', appeal: '',
     submitting: false
   },
 
   async onLoad() {
+    this.applyLanguage()
     // 老师没有填报入口，直接进入本页会看到填不了的表单：挡回去，由首页的「查看填报情况」承担
     if (app.globalData.role === 'export') {
       wx.showToast({ title: '请使用「查看填报情况」', icon: 'none' })
@@ -25,19 +28,37 @@ Page({
     await this.loadForm()
   },
 
+  onShow() {
+    this.applyLanguage()
+  },
+
+  applyLanguage() {
+    let language = 'zh'
+    try { language = wx.getStorageSync('homeLanguage') === 'en' ? 'en' : 'zh' } catch (e) {}
+    if (app.globalData.role === 'export') language = 'zh'
+    const statusLabels = ['Published', 'Completed, not published', 'Incomplete']
+    this.setData({
+      language, t: messages[language],
+      projectLabels: language === 'en' ? PROJECT_LABELS_EN : PROJECT_LABELS,
+      projectOptions: PROJECT_ROWS.map(row => ({ ...row, label: language === 'en' ? row.labelEn : row.label })),
+      statusOptions: STATUS_OPTIONS.map((value, index) => ({ value, label: language === 'en' ? statusLabels[index] : value }))
+    })
+    wx.setNavigationBarTitle({ title: messages[language].title })
+  },
+
   async loadForm() {
     this.setData({ loading: true, loadError: '' })
     try {
       const res = await wx.cloud.callFunction({ name: 'getForm' })
       const r = res.result
-      if (!r.ok) { this.setData({ loadError: r.msg || '本月暂无可用表单' }); return }
+      if (!r.ok) { this.setData({ loadError: translateError(r.msg, this.data.language, this.data.t.loadFailed) }); return }
       const deadlineTime = r.form.deadline ? new Date(r.form.deadline.replace(/-/g, '/')).getTime() : NaN
       const closed = r.form.status !== 'open' || Date.now() > deadlineTime
       this.setData({ month: r.form.month, deadline: r.form.deadline, status: r.form.status, closed, hasSubmission: !!r.submission })
       if (r.submission) this.fillExisting(r.submission)
 
     } catch (e) {
-      this.setData({ loadError: '网络连接失败，请稍后重试' })
+      this.setData({ loadError: this.data.t.network })
     } finally {
       this.setData({ loading: false })
     }
@@ -82,14 +103,14 @@ Page({
 
   async submit() {
     if (this.data.submitting || this.data.loading || this.data.loadError) return
-    if (this.data.closed) return wx.showToast({ title: '表单已截止', icon: 'none' })
+    if (this.data.closed) return wx.showToast({ title: this.data.t.closedError, icon: 'none' })
     const { dutyHours, shiftTime, locationIndex, projects, appeal } = this.data
-    if (dutyHours === '' || !Number.isFinite(Number(dutyHours)) || Number(dutyHours) < 0) return wx.showToast({ title: '请填写有效的值班工时', icon: 'none' })
-    if (locationIndex < 0) return wx.showToast({ title: '请选择值班地点', icon: 'none' })
+    if (dutyHours === '' || !Number.isFinite(Number(dutyHours)) || Number(dutyHours) < 0) return wx.showToast({ title: this.data.t.invalidDuty, icon: 'none' })
+    if (locationIndex < 0) return wx.showToast({ title: this.data.t.selectLocation, icon: 'none' })
 
     let normalizedProjects
     try { normalizedProjects = normalizeProjects(projects) }
-    catch (e) { return wx.showToast({ title: e.message, icon: 'none' }) }
+    catch (e) { return wx.showToast({ title: translateError(e.message, this.data.language, this.data.t.failed), icon: 'none' }) }
     this.setData({ submitting: true })
     try {
       const res = await wx.cloud.callFunction({
@@ -97,11 +118,11 @@ Page({
         data: { dutyHours, shiftTime, locationIndex, projects: normalizedProjects, appeal }
       })
       const r = res.result
-      if (!r.ok) return wx.showToast({ title: r.msg, icon: 'none' })
+      if (!r.ok) return wx.showToast({ title: translateError(r.msg, this.data.language, this.data.t.failed), icon: 'none' })
       this.setData({ hasSubmission: true })
-      wx.showToast({ title: '提交成功', icon: 'success' })
+      wx.showToast({ title: this.data.t.success, icon: 'success' })
     } catch (e) {
-      wx.showToast({ title: '提交失败', icon: 'none' })
+      wx.showToast({ title: this.data.t.failed, icon: 'none' })
     } finally {
       this.setData({ submitting: false })
     }

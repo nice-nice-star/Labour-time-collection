@@ -1,38 +1,38 @@
 <view class="page form-page">
-  <view wx:if="{{loading}}" class="card state-card"><text class="state-title">正在读取月度表单</text><text class="helper">请稍候，正在同步你的填报记录。</text></view>
-  <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">暂时无法填写</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForm">重新加载</button></view>
+  <view wx:if="{{loading}}" class="card state-card"><text class="state-title">{{t.loading}}</text><text class="helper">{{t.loadingHint}}</text></view>
+  <view wx:elif="{{loadError}}" class="card state-card"><text class="state-title">{{t.unavailable}}</text><text class="helper">{{loadError}}</text><button class="btn-secondary" bindtap="loadForm">{{t.reload}}</button></view>
   <block wx:else>
-    <view class="page-heading"><text class="eyebrow">MONTHLY REPORT</text><view class="report-heading"><text class="page-title">{{month}} 工时填报</text><text class="badge {{closed ? 'badge-muted' : ''}}">{{closed ? '已截止' : '填报中'}}</text></view><text class="page-desc">截止时间 · {{deadline}}</text></view>
-    <view wx:if="{{closed}}" class="notice">本月填报已截止，以下为你的工时记录。</view>
-    <view wx:elif="{{hasSubmission}}" class="notice">本月记录已提交。截止前可修改，再次提交后将更新记录。</view>
+    <view class="page-heading"><text class="eyebrow">MONTHLY REPORT</text><view class="report-heading"><text class="page-title">{{month}} {{t.report}}</text><text class="badge {{closed ? 'badge-muted' : ''}}">{{closed ? t.closed : t.open}}</text></view><text class="page-desc">{{t.deadline}} · {{deadline}}</text></view>
+    <view wx:if="{{closed}}" class="notice">{{t.closedNotice}}</view>
+    <view wx:elif="{{hasSubmission}}" class="notice">{{t.savedNotice}}</view>
     <view class="card">
-      <view class="section-heading"><view><text class="section-index">01</text><text class="section-title">值班记录</text></view><text class="helper">基础工时</text></view>
-      <text class="form-label field-first">本月值班总工时</text>
-      <view class="input-unit"><input class="input" type="digit" placeholder-class="placeholder" placeholder="上限不得超过12小时" value="{{dutyHours}}" bindinput="onDuty" disabled="{{closed || submitting}}" /><text class="unit">小时</text></view>
-      <text class="form-label">值班时段</text><input class="input" placeholder-class="placeholder" placeholder="例如 每周一 14:00–17:00" value="{{shiftTime}}" bindinput="onShift" disabled="{{closed || submitting}}" />
-      <text class="form-label">值班地点</text>
+      <view class="section-heading"><view><text class="section-index">01</text><text class="section-title">{{t.duty}}</text></view><text class="helper">{{t.basic}}</text></view>
+      <text class="form-label field-first">{{t.dutyTotal}}</text>
+      <view class="input-unit"><input class="input" type="digit" placeholder-class="placeholder" placeholder="{{t.dutyHint}}" value="{{dutyHours}}" bindinput="onDuty" disabled="{{closed || submitting}}" /><text class="unit">{{t.hours}}</text></view>
+      <text class="form-label">{{t.shift}}</text><input class="input" placeholder-class="placeholder" placeholder="{{t.shiftHint}}" value="{{shiftTime}}" bindinput="onShift" disabled="{{closed || submitting}}" />
+      <text class="form-label">{{t.location}}</text>
       <radio-group bindchange="onLocation"><label wx:for="{{locationOptions}}" wx:key="*this" class="location-option {{locationIndex === index ? 'location-selected' : ''}}"><radio color="#11877f" value="{{index}}" checked="{{locationIndex === index}}" disabled="{{closed || submitting}}" /><text>{{item}}</text></label></radio-group>
     </view>
     <view class="card">
-      <view class="section-heading"><view><text class="section-index">02</text><text class="section-title">项目产出</text></view><text class="helper">逐项添加项目</text></view>
-      <view wx:if="{{legacyProjectRows.length}}" class="notice">历史填报按原分类数量保留，以下新增项目请勿重复填写。<text wx:for="{{legacyProjectRows}}" wx:key="key" class="legacy-project">{{item.label || item.key}}：统筹 {{item.counts.coordinator || 0}}，参与 {{item.counts.participant || 0}}</text><text wx:if="{{projectName}}">原项目名称：{{projectName}}</text></view>
+      <view class="section-heading"><view><text class="section-index">02</text><text class="section-title">{{t.outputs}}</text></view><text class="helper">{{t.outputsHint}}</text></view>
+      <view wx:if="{{legacyProjectRows.length}}" class="notice">{{t.legacyNotice}}<text wx:for="{{legacyProjectRows}}" wx:key="key" class="legacy-project">{{projectLabels[item.key] || item.label || item.key}}: {{t.coordinator}} {{item.counts.coordinator || 0}}, {{t.participant}} {{item.counts.participant || 0}}</text><text wx:if="{{projectName}}">{{t.originalName}}: {{projectName}}</text></view>
       <view class="project-entry" wx:for="{{projects}}" wx:key="localId" wx:for-item="project" wx:for-index="idx">
-        <view class="project-entry-heading"><text class="section-title">{{idx + 1}}. 项目{{idx + 1}}</text><button class="remove-project" size="mini" data-idx="{{idx}}" bindtap="removeProject" wx:if="{{!closed}}" disabled="{{submitting}}">删除</button></view>
-        <text class="form-label">项目类型</text>
-        <picker range="{{projectOptions}}" range-key="label" value="{{project.typeIndex}}" data-idx="{{idx}}" bindchange="onProjectType" disabled="{{closed || submitting}}"><view class="picker"><text>{{project.typeIndex >= 0 ? projectOptions[project.typeIndex].label : '请选择项目类型'}}</text><text class="chevron">⌄</text></view></picker>
-        <text class="form-label">项目名称</text><input class="input" value="{{project.name}}" placeholder="请输入项目名称" data-idx="{{idx}}" data-field="name" bindinput="onProjectField" disabled="{{closed || submitting}}" />
-        <text class="form-label">项目分工</text><radio-group class="project-choices" data-idx="{{idx}}" data-field="role" bindchange="onProjectField"><label><radio value="coordinator" checked="{{project.role === 'coordinator'}}" disabled="{{closed || submitting}}" />统筹/独立</label><label><radio value="participant" checked="{{project.role === 'participant'}}" disabled="{{closed || submitting}}" />参与</label></radio-group>
-        <text class="form-label">完成情况</text><radio-group class="project-choices" data-idx="{{idx}}" data-field="status" bindchange="onProjectField"><label wx:for="{{statusOptions}}" wx:key="*this"><radio value="{{item}}" checked="{{project.status === item}}" disabled="{{closed || submitting}}" />{{item}}</label></radio-group>
-        <text class="form-label">完成形式</text><input class="input" value="{{project.completionForm}}" placeholder="请填入发布平台，活动名称 / 时间，以及结项标志" data-idx="{{idx}}" data-field="completionForm" bindinput="onProjectField" disabled="{{closed || submitting}}" />
-        <text class="form-label">实际占用时间</text><view class="input-unit"><input class="input" type="digit" value="{{project.actualHours}}" placeholder="请输入实际耗时" data-idx="{{idx}}" data-field="actualHours" bindinput="onProjectField" disabled="{{closed || submitting}}" /><text class="unit">hrs</text></view>
+        <view class="project-entry-heading"><text class="section-title">{{t.project}} {{idx + 1}}</text><button class="remove-project" size="mini" data-idx="{{idx}}" bindtap="removeProject" wx:if="{{!closed}}" disabled="{{submitting}}">{{t.remove}}</button></view>
+        <text class="form-label">{{t.type}}</text>
+        <picker range="{{projectOptions}}" range-key="label" value="{{project.typeIndex}}" data-idx="{{idx}}" bindchange="onProjectType" disabled="{{closed || submitting}}"><view class="picker"><text>{{project.typeIndex >= 0 ? projectOptions[project.typeIndex].label : t.selectType}}</text><text class="chevron">⌄</text></view></picker>
+        <text class="form-label">{{t.name}}</text><input class="input" value="{{project.name}}" placeholder="{{t.nameHint}}" data-idx="{{idx}}" data-field="name" bindinput="onProjectField" disabled="{{closed || submitting}}" />
+        <text class="form-label">{{t.role}}</text><radio-group class="project-choices" data-idx="{{idx}}" data-field="role" bindchange="onProjectField"><label><radio value="coordinator" checked="{{project.role === 'coordinator'}}" disabled="{{closed || submitting}}" />{{t.lead}}</label><label><radio value="participant" checked="{{project.role === 'participant'}}" disabled="{{closed || submitting}}" />{{t.participant}}</label></radio-group>
+        <text class="form-label">{{t.status}}</text><radio-group class="project-choices" data-idx="{{idx}}" data-field="status" bindchange="onProjectField"><label wx:for="{{statusOptions}}" wx:key="value"><radio value="{{item.value}}" checked="{{project.status === item.value}}" disabled="{{closed || submitting}}" />{{item.label}}</label></radio-group>
+        <text class="form-label">{{t.completion}}</text><input class="input" value="{{project.completionForm}}" placeholder="{{t.completionHint}}" data-idx="{{idx}}" data-field="completionForm" bindinput="onProjectField" disabled="{{closed || submitting}}" />
+        <text class="form-label">{{t.actual}}</text><view class="input-unit"><input class="input" type="digit" value="{{project.actualHours}}" placeholder="{{t.actualHint}}" data-idx="{{idx}}" data-field="actualHours" bindinput="onProjectField" disabled="{{closed || submitting}}" /><text class="unit">hrs</text></view>
       </view>
-      <button class="btn-secondary" bindtap="addProject" wx:if="{{!closed}}" disabled="{{submitting}}">＋ 添加项目</button>
-      <text class="helper" wx:if="{{!projects.length}}">暂无新增项目。</text>
+      <button class="btn-secondary" bindtap="addProject" wx:if="{{!closed}}" disabled="{{submitting}}">{{t.add}}</button>
+      <text class="helper" wx:if="{{!projects.length}}">{{t.empty}}</text>
     </view>
     <view class="card">
-      <view class="section-heading"><view><text class="section-index">03</text><text class="section-title">补充说明</text></view></view>
-      <text class="form-label">额外工时申诉 <text class="optional">选填</text></text><textarea class="textarea" placeholder-class="placeholder" placeholder="如有额外工时，请说明工作内容与时长" maxlength="1000" value="{{appeal}}" bindinput="onAppeal" disabled="{{closed || submitting}}" /><text class="helper">请提供清晰的说明，便于负责老师核对。</text>
+      <view class="section-heading"><view><text class="section-index">03</text><text class="section-title">{{t.notes}}</text></view></view>
+      <text class="form-label">{{t.appeal}} <text class="optional">{{t.optional}}</text></text><textarea class="textarea" placeholder-class="placeholder" placeholder="{{t.appealHint}}" maxlength="1000" value="{{appeal}}" bindinput="onAppeal" disabled="{{closed || submitting}}" /><text class="helper">{{t.appealHelp}}</text>
     </view>
-    <view class="submit-bar" wx:if="{{!closed}}"><button class="btn-primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">{{submitting ? '正在提交' : (hasSubmission ? '更新本月记录' : '提交本月记录')}}</button></view>
+    <view class="submit-bar" wx:if="{{!closed}}"><button class="btn-primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">{{submitting ? t.submitting : (hasSubmission ? t.update : t.submit)}}</button></view>
   </block>
 </view>

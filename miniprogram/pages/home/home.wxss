@@ -1,5 +1,11 @@
 .brand-row { display: flex; justify-content: space-between; align-items: center; }
 .date-label { color: #748593; font-size: 23rpx; }
+.brand-row { flex-wrap: wrap; gap: 16rpx; }
+.home-controls { display: flex; align-items: center; gap: 16rpx; margin-left: auto; }
+.language-toggle { margin: 0; padding: 0 20rpx; min-height: 64rpx; line-height: 64rpx; font-size: 24rpx; color: #157d74; background: #e8f6f0; border-radius: 18rpx; }
+.language-toggle::after { border: none; }
+.profile .badge { max-width: 210rpx; white-space: normal; text-align: center; }
+.avatar { flex-shrink: 0; }
 .welcome { margin: 30rpx 0; }
 .profile { display: flex; align-items: center; margin-bottom: 36rpx; }
 .avatar { width: 76rpx; height: 76rpx; background: #dcece9; color: #157d74; border-radius: 24rpx; text-align: center; line-height: 76rpx; font-weight: 600; font-size: 32rpx; }
