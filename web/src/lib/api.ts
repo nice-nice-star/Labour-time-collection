@@ -3,6 +3,10 @@ import { getCloud } from './cloud'
 export interface WebUser {
   name: string
   exportId: string
+  /** 老师所属部门：名单里的原始写法（规范值 / 中文名 / 别名） */
+  department?: string
+  /** 服务端按部门映射表算好的展示文本；「填报情况」用它默认选中本部门 */
+  departmentText?: string
 }
 
 export interface ApiResult {

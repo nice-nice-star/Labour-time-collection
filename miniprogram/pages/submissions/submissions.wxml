@@ -23,14 +23,30 @@
       <view wx:if="{{rowsLoading}}" class="helper">正在加载填报情况…</view>
       <view wx:elif="{{!rows.length}}" class="helper">名单里还没有学助。</view>
       <view wx:else>
+        <!-- 部门筛选：选项来自名单里真实出现的部门；只有一个部门时不占地方 -->
+        <view wx:if="{{departments.length > 2}}" class="dept-filter">
+          <view
+            wx:for="{{departments}}"
+            wx:key="key"
+            class="dept-chip {{item.key === department ? 'dept-chip-active' : ''}}"
+            data-key="{{item.key}}"
+            bindtap="selectDepartment"
+            hover-class="tap-feedback"
+            role="button"
+            aria-label="按部门筛选 {{item.label}}"
+          ><text>{{item.label}}</text><text class="dept-count">{{item.count}}</text></view>
+        </view>
         <view class="search">
           <text class="search-icon">⌕</text>
           <input class="search-input" value="{{keyword}}" bindinput="onSearch" placeholder="搜索姓名" placeholder-class="placeholder" confirm-type="search" />
           <text wx:if="{{keyword}}" class="search-clear" bindtap="clearSearch">✕</text>
         </view>
-        <text wx:if="{{keyword}}" class="helper">匹配 {{visibleRows.length}} / {{rows.length}} 人</text>
+        <text wx:if="{{keyword || department}}" class="helper">匹配 {{visibleRows.length}} / {{rows.length}} 人</text>
         <view class="roster-head"><text>姓名 · 部门</text><text>状态 · 有效工时</text></view>
-        <view wx:if="{{!visibleRows.length}}" class="helper">没有名字包含「{{keyword}}」的学助。</view>
+        <view wx:if="{{!visibleRows.length}}" class="filter-empty">
+          <text class="helper">没有符合当前筛选条件的学助。</text>
+          <button class="btn-secondary" bindtap="clearFilters">清除筛选</button>
+        </view>
         <view class="roster-row" wx:for="{{visibleRows}}" wx:key="studentId">
           <view class="roster-main">
             <view class="roster-name"><text>{{item.name}}</text><text class="role-mark">{{item.isSupervisor ? '主管' : '学助'}}</text></view>

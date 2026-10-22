@@ -2,16 +2,27 @@
 // 老师（导出账户）查看填报进度与每人有效工时。只显示汇总数值，不显示学助填写的具体内容。
 const app = getApp()
 const { DEPARTMENT_LABELS, resolveDepartment } = require('../../config/constants')
-const { filterRowsByName } = require('../../utils/search')
+const { buildDepartmentOptions, filterSubmissionRows } = require('../../utils/search')
 
 const STATUS_LABELS = { open: '填报中', closed: '已截止', calculated: '已统计' }
+
+// 老师自己的部门 → 展示文本，与学生行的部门列用同一套映射（规范值/中文名/英文别名都能归一）。
+// 部门为空或只有空白时返回空字符串：不能返回「未设置」，那是「没有部门的学助」的筛选桶。
+function ownDepartmentOf(user) {
+  const raw = String((user && user.department) || '')
+  if (!raw.trim()) return ''
+  return DEPARTMENT_LABELS[resolveDepartment(raw)] || raw
+}
 
 Page({
   data: {
     loading: true, rowsLoading: false, loadError: '',
     forms: [], formIndex: -1, formNames: [],
     form: null, rows: [], visibleRows: [], summary: null,
-    keyword: ''
+    // departments 第一项是「全部」（key 为空字符串），其余由名单里的部门推导
+    keyword: '', department: '', departments: [],
+    // 老师自己的部门：进页面默认筛它，名单里没有这个部门时退回「全部」
+    ownDepartment: ''
   },
 
   async onLoad() {
@@ -20,6 +31,8 @@ Page({
       setTimeout(() => wx.redirectTo({ url: '/pages/home/home' }), 600)
       return
     }
+    const ownDepartment = ownDepartmentOf(app.globalData.user)
+    this.setData({ ownDepartment, department: ownDepartment })
     await this.loadForms()
   },
 
@@ -70,10 +83,16 @@ Page({
           hoursText: row.submitted && row.effectiveHours != null ? `${row.effectiveHours} h` : '—'
         }
       })
+      const departments = buildDepartmentOptions(rows)
+      // 名单变动后选中的部门可能已经不存在；名单里只有一个部门时筛选没有意义，都退回「全部」
+      const wanted = departments.length > 2 ? this.data.department : ''
+      const department = departments.some(item => item.key === wanted) ? wanted : ''
       this.setData({
         form: { ...r.form, statusLabel: STATUS_LABELS[r.form.status] || '未知状态' },
         rows,
-        visibleRows: filterRowsByName(rows, this.data.keyword),
+        departments,
+        department,
+        visibleRows: filterSubmissionRows(rows, this.data.keyword, department),
         summary: r.summary
       })
     } catch (e) {
@@ -83,18 +102,42 @@ Page({
     }
   },
 
-  // 搜索框：只过滤已加载的名单，不再请求云端；进度汇总仍按全员统计
+  // 搜索框与部门按钮都只过滤已加载的名单，不再请求云端；进度汇总仍按全员统计
   onSearch(e) {
     const keyword = e.detail.value
-    this.setData({ keyword, visibleRows: filterRowsByName(this.data.rows, keyword) })
+    this.setData({
+      keyword,
+      visibleRows: filterSubmissionRows(this.data.rows, keyword, this.data.department)
+    })
   },
 
   clearSearch() {
-    this.setData({ keyword: '', visibleRows: this.data.rows })
+    this.setData({
+      keyword: '',
+      visibleRows: filterSubmissionRows(this.data.rows, '', this.data.department)
+    })
+  },
+
+  // 再点一次已选中的部门等于取消筛选，省一个「全部」按钮的来回
+  selectDepartment(e) {
+    const key = String(e.currentTarget.dataset.key || '')
+    const department = key === this.data.department ? '' : key
+    this.setData({
+      department,
+      visibleRows: filterSubmissionRows(this.data.rows, this.data.keyword, department)
+    })
+  },
+
+  clearFilters() {
+    this.setData({
+      keyword: '',
+      department: '',
+      visibleRows: this.data.rows
+    })
   },
 
   onForm(e) {
-    // 换月份时清掉旧关键词，避免上一月的过滤条件把新月份名单筛空
+    // 换月份只清姓名条件：部门是老师自己选的口径，新月份里没有它时由 loadRows 退回「全部」
     this.setData({ formIndex: Number(e.detail.value), keyword: '' })
     this.loadRows()
   }

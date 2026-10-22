@@ -3,6 +3,7 @@
 // 身份只来自姓名 + 工号 + 密码，绝不读 cloud.getWXContext()。
 const cloud = require('wx-server-sdk')
 const { readSecret, verifyPassword, signToken } = require('./webauth')
+const { departmentText } = require('./departments')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
@@ -23,9 +24,17 @@ exports.main = async (event = {}) => {
   if (!account || !account.webPasswordHash) return denied
   if (!verifyPassword(password, account.webPasswordSalt, account.webPasswordHash)) return denied
 
+  // 老师自己的部门随身份一起下发：网页「填报情况」据此默认选中本部门的学助。
+  // 部门为空时不回「未设置」——那会把默认筛选指到「没有部门的学助」上。
+  const department = String(account.department || '').trim()
   return {
     ok: true,
     token: signToken(account._id, secret),
-    user: { name: account.name, exportId: account.exportId }
+    user: {
+      name: account.name,
+      exportId: account.exportId,
+      department,
+      departmentText: department ? departmentText(department) : ''
+    }
   }
 }

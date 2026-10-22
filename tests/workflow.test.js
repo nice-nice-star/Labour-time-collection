@@ -306,9 +306,13 @@ test('姓名和 ID 必须匹配；缺少参数拒绝绑定', async () => {
 test('老师也能首次绑定并被识别', async () => {
   const seed = fixture()
   delete seed.export_accounts[0].openid
+  seed.export_accounts[0].department = 'Administration_and_Data'
   const h = createHarness(seed)
   assert.equal((await h.call('bindStudent', 'new-teacher', { name: '老师', studentId: 'T1' })).role, 'export')
-  assert.equal((await h.call('login', 'new-teacher')).role, 'export')
+  const login = await h.call('login', 'new-teacher')
+  assert.equal(login.role, 'export')
+  // 小程序端拿到整条导出账户记录，部门随身份进 app.globalData.user，页面据此默认选中本部门
+  assert.equal(login.user.department, 'Administration_and_Data')
 })
 
 for (const fn of ['createMonthlyForm', 'listForms', 'exportData']) {
@@ -359,6 +363,9 @@ const SHARED_MODULES = [
   // Web 统计表导出另起了一套版式（pivot.js），但进度口径与部门映射仍与「填报情况」页同源
   ['rows.js', 'webGetSubmissions', 'webExportData'],
   ['departments.js', 'webGetSubmissions', 'webExportData'],
+  // 老师自己的部门要在登录载荷里按同一张表转展示文本，两份副本也必须逐字节一致
+  ['departments.js', 'getSubmissions', 'webLogin'],
+  ['departments.js', 'webLogin', 'webSession'],
   ['constants.js', 'exportData', 'webExportData']
 ]
 process.env.WEB_TOKEN_SECRET = WEB_SECRET
@@ -390,11 +397,40 @@ test('Web 凭据：姓名 + 工号完全一致才可激活，激活后可登录�
   const login = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
   assert.equal(login.ok, true)
   assert.ok(login.token, '登录成功应返回票据')
-  assert.deepEqual(login.user, { name: '老师', exportId: 'T1' })
+  assert.deepEqual(login.user, { name: '老师', exportId: 'T1', department: '', departmentText: '' })
 
   const session = await h.call('webSession', undefined, { token: login.token })
   assert.equal(session.ok, true)
-  assert.deepEqual(session.user, { name: '老师', exportId: 'T1' })
+  assert.deepEqual(session.user, { name: '老师', exportId: 'T1', department: '', departmentText: '' })
+})
+
+test('Web 登录与恢复会话都带出老师自己的部门，并按映射表转成展示文本', async () => {
+  const seed = webFixture()
+  seed.export_accounts[0].department = ' administration_and_data '
+  const h = createHarness(seed)
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+
+  const login = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  assert.deepEqual(login.user, {
+    name: '老师',
+    exportId: 'T1',
+    department: 'administration_and_data',
+    departmentText: '行政与数据'
+  })
+
+  // 刷新页面走 webSession：默认筛选靠这份载荷，不能丢部门
+  const session = await h.call('webSession', undefined, { token: login.token })
+  assert.deepEqual(session.user, login.user)
+
+  // 枚举外的旧值原样下发：学生行的部门列也是这么显示的，页面按同一段文本匹配
+  h.tables.export_accounts[0].department = 'CPRO'
+  assert.equal((await h.call('webSession', undefined, { token: login.token })).user.departmentText, 'CPRO')
+
+  // 没填部门：给空字符串而不是「未设置」，否则默认筛选会指到「没有部门的学助」上
+  h.tables.export_accounts[0].department = undefined
+  const missing = await h.call('webSession', undefined, { token: login.token })
+  assert.equal(missing.user.department, '')
+  assert.equal(missing.user.departmentText, '')
 })
 
 test('Web 凭据：已激活的账户拒绝再次绑定，防止知道姓名工号的人顶掉密码', async () => {
@@ -467,7 +503,7 @@ test('Web 函数不读调用方环境身份：残留的微信身份不会串号'
 
   // 残留身份是老师甲，票据属于老师乙：必须按票据判定，不能串号
   const session = await h.call('webSession', undefined, { token })
-  assert.deepEqual(session.user, { name: '老师乙', exportId: 'T2' })
+  assert.deepEqual(session.user, { name: '老师乙', exportId: 'T2', department: '', departmentText: '' })
   // 没有票据时，残留身份也换不到任何东西
   assert.equal((await h.call('webSession', undefined, {})).ok, false)
 })

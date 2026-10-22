@@ -444,6 +444,52 @@ td:first-child {
   font-size: 14px;
 }
 
+/* 部门筛选按钮：一行放不下就换行，选中态用品牌紫实心 */
+.dept-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text);
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.dept-chip:hover:not(:disabled) {
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+}
+
+.dept-chip.active,
+.dept-chip.active:hover:not(:disabled) {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.dept-count {
+  font-size: 11px;
+  opacity: .7;
+}
+
+.filter-empty {
+  padding: 20px 0;
+  text-align: center;
+}
+
+.filter-empty .helper {
+  margin-bottom: 12px;
+}
+
 @media (max-width: 820px) {
   .app-body {
     flex-direction: column;

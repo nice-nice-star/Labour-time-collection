@@ -2,6 +2,14 @@
 .summary-cell { flex: 1; text-align: center; }
 .summary-number { display: block; font-size: 42rpx; line-height: 1.2; font-weight: 600; }
 .summary-cell .helper { margin-top: 4rpx; }
+/* 部门筛选按钮：可换行，选中态用主色实心，计数用弱化小字 */
+.dept-filter { display: flex; flex-wrap: wrap; margin-bottom: 8rpx; }
+.dept-chip { display: flex; align-items: center; font-size: 23rpx; color: #47606e; background: #f2f6f8; border: 2rpx solid #e6edf0; border-radius: 100rpx; padding: 10rpx 20rpx; margin: 0 12rpx 12rpx 0; }
+.dept-chip-active { color: #fff; background: #11877f; border-color: #11877f; }
+.dept-count { margin-left: 8rpx; font-size: 20rpx; opacity: .7; }
+.filter-empty { padding: 28rpx 0; text-align: center; }
+.filter-empty .helper { margin-top: 0; }
+.filter-empty button { margin-top: 20rpx; }
 .search { display: flex; align-items: center; background: #f7f9fb; border: 2rpx solid #e6edf0; border-radius: 14rpx; padding: 14rpx 20rpx; margin-bottom: 20rpx; }
 .search-icon { color: #8a98a5; font-size: 30rpx; margin-right: 12rpx; }
 .search-input { flex: 1; font-size: 27rpx; height: 40rpx; line-height: 40rpx; }
