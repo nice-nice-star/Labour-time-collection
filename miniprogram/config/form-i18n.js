@@ -11,7 +11,7 @@ const messages = {
     "deadline": "截止时间",
     "closedNotice": "本月填报已截止，以下为你的工时记录。",
     "savedNotice": "本月记录已提交。截止前可修改，再次提交后将更新记录。",
-    "duty": "值班记录",
+    "duty": "值班记录（选填）",
     "basic": "未填写工时按 0 小时计",
     "dutyTotal": "本月值班总工时",
     "dutyHint": "上限不得超过12小时",
