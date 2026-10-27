@@ -8,7 +8,7 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 
 完整流程见 [测试工作流](docs/testing-workflow.md)。本地使用 Node.js 18+，运行 `npm test` 验证多身份业务逻辑，运行 `npm run test:fixtures` 生成虚构账户数据。
 
-开发版与体验版需要在 `miniprogram/config/environment.js` 配置独立测试云环境 ID；未配置时会停止连接，避免误写正式数据。本地测试无需真实微信或云环境。
+开发版与体验版使用 `miniprogram/config/environment.js` 的 `test`，正式版使用 `production`；当前各版本共用同一个云环境和数据库。以后需要隔离数据时，可将 `test` 改为独立测试云环境 ID；未配置时会停止连接。本地测试无需真实微信或云环境。
 
 现在是测试环境，没有历史遗留数据需要处理。
 
