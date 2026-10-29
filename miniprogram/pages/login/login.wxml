@@ -1,5 +1,5 @@
 <view class="page login-page">
-  <view class="login-mark">LT<view class="mark-dot"></view></view>
+  <image class="login-mark" src="/images/logo.png" mode="widthFix" aria-label="CPRO" />
   <view class="page-heading"><text class="eyebrow">CPRO / LABOUR TIME</text><text class="page-title">开启你的工时记录</text><text class="page-desc">首次使用，请先完成学助身份认证。</text></view>
   <view class="card">
     <view class="section-heading"><text class="section-title">绑定学助身份</text><text class="badge">首次登录</text></view>

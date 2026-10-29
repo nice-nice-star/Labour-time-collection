@@ -1,4 +1,4 @@
 .login-page { padding-top: 64rpx; }
-.login-mark { position: relative; width: 100rpx; height: 100rpx; line-height: 100rpx; text-align: center; background: #193f4d; color: #fff; border-radius: 28rpx; font-size: 38rpx; font-weight: 700; margin-bottom: 40rpx; }
-.mark-dot { position: absolute; width: 20rpx; height: 20rpx; background: #78d8b6; border: 6rpx solid #f3f6f8; border-radius: 50%; right: -8rpx; bottom: -6rpx; }
+/* 与启动页同一个 logo（透明底），高度由 widthFix 按原图比例算 */
+.login-mark { display: block; width: 240rpx; margin-bottom: 40rpx; }
 .bind-button { margin-top: 36rpx; }

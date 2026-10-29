@@ -15,6 +15,7 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 ### 账户类型
 > 1.导出账户，由相关老师负责，按照老师需求单独创建，不提供申请。拥有开启月度统计和导出数据的权限。
 > 2.学助账户，提前内置数据库存储每个学生助理的信息。初次登陆时，每个学生提出申请，用唯一的微信账号与内置学助信息一一对应。之后用户基于构建月度表单提供信息。不具备导出权限。
+> 3.网页端：老师与学助都需要首次激活（老师填姓名 + 工号，学助填姓名 + 学号），之后用自设密码登录；网页凭据与小程序 `openid` 互不影响。学助在网页端填写月度表单默认要求已在小程序绑定微信；临时开关 `WEB_ALLOW_UNBOUND=true` 打开后，未绑定学助可先以 `web:<_id>` 网页身份填报，之后在小程序绑定真实微信时自动合并。提交与小程序共用同一条 `submissions` 记录。
 
 ### 内置数据库提供的学生助理信息
 > 学生助理姓名
@@ -101,21 +102,37 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 > 2. 云函数实例会被复用，小程序调用写进进程的 `WX_OPENID` 可能残留到下一次调用。一旦匿名调用被放行，
 >    它就可能继承上一位老师的身份——**这个风险函数内部挡不住**，只能靠安全规则挡住。
 
-Web 管理端（未登录模式 + 自建凭据）落地时同样遵守这两条：给 Web 用的云函数**必须另起名字**并在安全规则里
+Web 端（老师/学助，未登录模式 + 自建凭据）落地时同样遵守这两条：给 Web 用的云函数**必须另起名字**并在安全规则里
 单独放行，且**只认事件里带的自建凭据，绝不调用 `cloud.getWXContext()`**。这些前提都在平台侧，本地测不到，
 在 `tests/workflow.test.js` 末尾对应 4 条 `test.todo`（安全规则、未登录模式、`WEB_TOKEN_SECRET`、登录限流）。
 
-### Web 管理端（老师用，未登录模式 + 自建凭据）
+### Web 端（老师 + 学助，未登录模式 + 自建凭据）
 
-网页访客没有微信身份，所以不共用小程序那套 `openid`，而是自建凭据：
+网页访客没有微信身份，所以不共用小程序那套 `openid`，而是自建凭据。老师与学助是**两套账户、同一套流程**：
 
 ```
-首次激活 webBind（姓名 + 工号完全一致，与 bindStudent 同一信任模型；已激活则拒绝重绑）
-   → 登录 webLogin（校验口令，签发无状态 HMAC 票据，12 小时）
-   → webSession（票据换身份，网页刷新后恢复登录态）
+首次激活 webBind（姓名 + 工号）/ webStudentBind（姓名 + 学号）
+  完全一致才放行，与 bindStudent 同一信任模型；已激活则拒绝重绑
+    → 登录 webLogin / webStudentLogin（校验口令，签发带 role 的无状态 HMAC 票据，12 小时）
+    → webSession（按票据里的 role 换身份，网页刷新后恢复登录态）
 ```
 
-管理端功能由**另一套同名的 `web*` 云函数**提供，与小程序端并列（不是给原函数开两个身份通道）：
+- 老师账户在 `export_accounts`，学助账户在 `students`；口令都用 `scrypt` 加盐哈希，**不存明文**。
+- 票据里带 `role`（`export` / `student`）并参与 HMAC 签名；`webSession` 按 role 去对应集合取账户。
+- 老师数据接口统一走 `requireExport`：**role 必须是 `export`**，学助票据一律拒绝。
+  只靠「查不到老师账户」挡不住——学助记录的 `_id` 万一与某条 `export_accounts` 相同就会越权。
+- 学助的数据接口走 `requireStudent`：`webGetForm` / `webSubmitForm` 负责网页端表单读写。
+- 小程序端 `login` / `bindStudent` 会把 `webPasswordSalt` / `webPasswordHash` 从返回载荷里剔除，
+  它们只属于网页端凭据，不下发客户端。
+
+Web 端的认证函数：
+
+| 身份 | 激活（首次设置密码） | 登录 | 会话恢复 |
+| --- | --- | --- | --- |
+| 老师 | `webBind`（姓名 + 工号） | `webLogin` | `webSession` |
+| 学助 | `webStudentBind`（姓名 + 学号） | `webStudentLogin` | `webSession` |
+
+管理端数据功能由**另一套同名的 `web*` 云函数**提供，与小程序端并列（不是给原函数开两个身份通道）：
 
 | 小程序端（`getWXContext`） | Web 端（票据） |
 | --- | --- |
@@ -124,22 +141,54 @@ Web 管理端（未登录模式 + 自建凭据）落地时同样遵守这两条�
 | `getSubmissions` | `webGetSubmissions` |
 | `exportData` | `webExportData` |
 
+学助数据功能：
+
+| 小程序端（`getWXContext`） | Web 端（票据） |
+| --- | --- |
+| `getForm` | `webGetForm` |
+| `submitForm` | `webSubmitForm` |
+
+- `webGetForm` 返回本月表单、自己的那一条提交、项目类型/完成状态/地点选项，以及服务端算好的
+  `canSubmit`（开放中、未过截止时间，且已有身份键：真实 `openid` 或临时网页身份）。
+- `webSubmitForm` 与 `submitForm` **写同一条 `submissions`**（按 `openid` 对齐），
+  姓名、学号、主管标记、部门都由服务端重新读 `students`，不接受前端传值；截止前可反复覆盖。
+- **未绑定微信的学助默认只读**。临时开关 **`WEB_ALLOW_UNBOUND=true`** 打开后可以先在网页填报：
+  首次提交时 `webSubmitForm` 会写入 `students.openid = web:<students._id>`、`openidSource: 'web'`，
+  之后的提交、进度、月结补零、导出仍然共用同一个 `openid` 关联键，不会多出名单外行。
+  学生之后在小程序用姓名 + 学号绑定时，`bindStudent` 允许真实微信接管，并把该学生所有
+  `submissions.openid` 从 `web:<_id>` 迁到真实 openid；进度页把这类账户显示为「网页账户」/「网页」。
+  开关只影响尚未生成网页身份的学生；已有网页身份的学助在关闭开关后仍可继续填报。
+  临时身份仍是**先到先得**：知道姓名 + 学号的人可以在学生绑微信前抢绑（与原有 `bindStudent`
+  同一信任模型）；网页密码只保护网页登录，挡不住这种抢绑。试点只建议对可信学生开启，或由老师核对后
+  再让学生绑定，试点结束建议清理并关闭开关。
+- 前端页面在 `web/src/pages/StudentFormPage.tsx`：值班记录、逐项项目、补充说明三段；
+  有旧版按类型计数的记录时以只读方式展示，提交时服务端会继续保留这些计数。
+
 **必须分开命名**：安全规则是按函数名放行的，`web*` 需要 `"invoke": true`，一旦让老师函数也落到这条规则下，
 未登录访客就能调到它们，进而继承实例里残留的 `WX_OPENID`。分开命名是这套设计成立的前提。
 
-- 口令用 `scrypt` 加盐哈希存进 `export_accounts` 的 `webPasswordSalt` / `webPasswordHash`，**不存明文**。
-- 登录/恢复会话的 `user` 载荷是 `{ name, exportId, department, departmentText }`：老师在 `export_accounts` 里的 `department` 随身份下发，网页据此默认筛选本部门的学助；`departments.js` 在 `webLogin`、`webSession` 各存一份与 `getSubmissions` 逐字节一致的副本。
+- 老师登录/恢复会话的 `user` 载荷是 `{ name, exportId, department, departmentText }`；学助是
+  `{ name, studentId, isSupervisor, department, departmentText }`，**不带 `openid`、也不带任何口令字段**。
+  `departments.js` 在 `webLogin`、`webSession`、`webStudentLogin` 各存一份与 `getSubmissions` 逐字节一致的副本。
+- 学助的网页凭据和临时网页身份都写在 `students` 记录上（`webPassword*`、`openid`、`openidSource`）；
+  整表重新导入名单会覆盖这些字段：已激活学生要重新激活，网页身份学生会被当成未绑定、旧提交可能失联。
+  导入时保留这些列可避免。
+- 因此 `students` 现在含口令哈希，数据库权限必须**禁止客户端直接读写**（小程序只经云函数访问）；
+  否则规则一放松，哈希就会暴露给任意客户端。
 - 票据密钥来自云函数环境变量 **`WEB_TOKEN_SECRET`**（至少 16 字符）。**取不到就拒绝服务**，绝不退回默认值。
-  **七个 `web*` 函数都要配，且必须是同一个值**（`webLogin` 签发、其余验签，值不一致会全部失败）；
-  测试环境与正式环境各用独立密钥。
-- 登录失败一律回同一句提示（未激活 / 密码错 / 工号错 / 账户不存在），避免被拿来枚举账户。
-- `webauth.js` 在七个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
+  **需要签发或验签的九个 `web*` 函数必须配同一个值**（`webLogin` / `webStudentLogin` 签发，
+  `webSession`、`webGetForm`、`webSubmitForm` 与四个管理端数据函数验签；
+  `webBind` / `webStudentBind` 只做口令哈希，不读密钥）。值不一致会全部失败，测试环境与正式环境各用独立密钥。
+- 登录失败一律回同一句提示（未激活 / 密码错 / 学号或工号错 / 账户不存在），避免被拿来枚举账户。
+- `webauth.js` 在十一个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
   `getWXContext()`**（未登录模式下那是残留身份）。
 - 两边必须给出**完全一样**的业务结果，所以纯逻辑抽成共享模块、各存一份副本、由测试校验：
   `rows.js`（填报进度口径，`getSubmissions` ↔ `webGetSubmissions` ↔ `webExportData`）、
   `departments.js`（部门枚举/别名/中文名，同上三处）、
-  `constants.js`（费率表，`exportData` ↔ `webExportData`）。
-  测试不只比对副本字节，还**用同一份数据跑两端、断言产物完全相同**。
+  `constants.js` / `projects.js` / `project-weighting.js`（表单枚举、校验与折算，
+  `submitForm` ↔ `webSubmitForm`；`webGetForm` 另复制 `constants.js` / `projects.js`）。
+  测试不只比对副本字节，还**用同一份数据跑两端、断言产物完全相同**（学助网页提交与小程序提交写入的
+  记录除 `_id`/时间戳外逐字段一致）。
   唯一的例外是**导出表格的版式**：Web 端出的是横向统计表，版式逻辑另起一份
   （`webExportData/pivot.js`），只有进度口径仍与小程序端同源，详见「导出要求」。
 
@@ -154,14 +203,17 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 
 > 1. 开启**未登录模式**：云开发控制台 → 设置 → 全局设置/权限设置。云环境默认禁止未登录访问。
 > 2. 数据库/存储权限必须用**安全规则**配置，不能用「简易权限配置」——否则未登录用户访问不了云资源。
-> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给七个 `web*` 函数加 `"invoke": true`：
->
+> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给十一个 `web*` 函数加 `"invoke": true`：>
 > ```json
 > {
 >   "*":                    { "invoke": "auth != null" },
 >   "webBind":              { "invoke": true },
 >   "webLogin":             { "invoke": true },
 >   "webSession":           { "invoke": true },
+>   "webStudentBind":       { "invoke": true },
+>   "webStudentLogin":      { "invoke": true },
+>   "webGetForm":           { "invoke": true },
+>   "webSubmitForm":        { "invoke": true },
 >   "webListForms":         { "invoke": true },
 >   "webCreateMonthlyForm": { "invoke": true },
 >   "webGetSubmissions":    { "invoke": true },
@@ -173,6 +225,10 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 > 未登录模式下安全规则里的 `auth` 为空，所以 `web*` 必须显式放行。
 >
 > 未登录模式**不会**调用 `cloudbase_auth` 云函数（那是公众号登录态才需要的），本项目不需要实现它。
+
+> **临时放行未绑定学助**：给 `webGetForm` 和 `webSubmitForm` 两个函数都配置环境变量
+> `WEB_ALLOW_UNBOUND=true`（只配一个会出现“页面能填但提交被拒”或“页面只读”）。删除该变量即恢复
+> “未绑定只读”；已经生成 `web:<_id>` 身份的学生仍可继续填报，并在小程序绑定时自动迁移历史提交。
 
 
 
@@ -318,6 +374,10 @@ else :
 
 - [x] 老师也需要分部门，每个部门优先查看自己部门的学助（`export_accounts.department`；进入「填报情况」默认筛本部门，仍可切「全部」）
 - [ ] 学助的指导老师，临时学助给徐涵老师
+- [x] 学助网页端登录（`webStudentBind` / `webStudentLogin`，`webSession` 按票据 `role` 恢复会话）
+- [x] 学助网页端填写月度表单（`webGetForm` / `webSubmitForm`；与小程序共用同一条提交记录）
+- [x] 未绑定微信的学助网页填报：临时方案（`WEB_ALLOW_UNBOUND=true`，自动 `web:<_id>` + 绑定迁移）
+- [ ] 试点结束后清理临时网页身份，统一 `submissions` 的身份关联键
 - [x] 值班工时占位符：playerName每个月不超过12个小时
 - [x] **学助中英文版本，老师只需要中文。**
 - [x] 不体现预估公式

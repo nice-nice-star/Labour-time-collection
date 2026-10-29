@@ -4,6 +4,13 @@
 // 的进度口径。云函数不能跨目录 require，所以本文件在两处各存一份副本，npm test 校验逐字节一致。
 const { departmentText } = require('./departments')
 
+// 身份来源：未绑定 / 网页临时身份 / 真实微信。老记录没有 openidSource 时按前缀判断。
+function identitySourceOf(stu) {
+  if (!stu.openid) return ''
+  if (stu.openidSource === 'web') return 'web'
+  return typeof stu.openid === 'string' && stu.openid.startsWith('web:') ? 'web' : 'wechat'
+}
+
 // 只回汇总数值，不回 answers / projectRows：老师在这页看不到学助填的具体内容。
 function buildRows(students, submissions) {
   const byOpenid = new Map((submissions || []).map(s => [s.openid, s]))
@@ -24,6 +31,7 @@ function buildRows(students, submissions) {
       departmentText: departmentText(department),
       isSupervisor: !!stu.isSupervisor,
       bound: !!stu.openid,
+      identitySource: identitySourceOf(stu),
       submitted,
       zeroFilled: !!sub && sub.source === 'auto-zero',
       // 未提交没有「申报时长」，留 null 由页面显示为「—」，不写成 0

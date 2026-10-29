@@ -354,6 +354,8 @@ test('匿名调用（未登录来源）拿不到老师权限，不写库也不�
 const WEB_SECRET = 'test-secret-at-least-16-chars'
 const WEB_FUNCTIONS = [
   'webBind', 'webLogin', 'webSession',
+  'webStudentBind', 'webStudentLogin',
+  'webGetForm', 'webSubmitForm',
   'webListForms', 'webCreateMonthlyForm', 'webGetSubmissions', 'webExportData'
 ]
 // 小程序端与 Web 端必须共用同一份纯逻辑，否则两边口径会漂移
@@ -366,6 +368,14 @@ const SHARED_MODULES = [
   // 老师自己的部门要在登录载荷里按同一张表转展示文本，两份副本也必须逐字节一致
   ['departments.js', 'getSubmissions', 'webLogin'],
   ['departments.js', 'webLogin', 'webSession'],
+  // 学助登录载荷也要把名单里的部门原值转成中文展示名
+  ['departments.js', 'webLogin', 'webStudentLogin'],
+  // 学助网页填报表单复用 submitForm 的枚举、校验与折算副本
+  ['constants.js', 'submitForm', 'webGetForm'],
+  ['projects.js', 'submitForm', 'webGetForm'],
+  ['constants.js', 'submitForm', 'webSubmitForm'],
+  ['projects.js', 'submitForm', 'webSubmitForm'],
+  ['project-weighting.js', 'submitForm', 'webSubmitForm'],
   ['constants.js', 'exportData', 'webExportData']
 ]
 process.env.WEB_TOKEN_SECRET = WEB_SECRET
@@ -378,6 +388,23 @@ function webFixture() {
 }
 
 const PASSWORD = 'goodpassword'
+
+async function loginStudent(h, name, studentId) {
+  await h.call('webStudentBind', undefined, { name, studentId, password: PASSWORD })
+  return h.call('webStudentLogin', undefined, { name, studentId, password: PASSWORD })
+}
+
+// 临时开关只在单个用例内打开，finally 恢复，避免影响其它用例。
+async function withUnboundWeb(fn) {
+  const previous = process.env.WEB_ALLOW_UNBOUND
+  process.env.WEB_ALLOW_UNBOUND = 'true'
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env.WEB_ALLOW_UNBOUND
+    else process.env.WEB_ALLOW_UNBOUND = previous
+  }
+}
 
 test('Web 凭据：姓名 + 工号完全一致才可激活，激活后可登录并换取会话', async () => {
   const h = createHarness(webFixture())
@@ -396,11 +423,13 @@ test('Web 凭据：姓名 + 工号完全一致才可激活，激活后可登录�
 
   const login = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
   assert.equal(login.ok, true)
+  assert.equal(login.role, 'export', '老师票据必须带 role=export')
   assert.ok(login.token, '登录成功应返回票据')
   assert.deepEqual(login.user, { name: '老师', exportId: 'T1', department: '', departmentText: '' })
 
   const session = await h.call('webSession', undefined, { token: login.token })
   assert.equal(session.ok, true)
+  assert.equal(session.role, 'export')
   assert.deepEqual(session.user, { name: '老师', exportId: 'T1', department: '', departmentText: '' })
 })
 
@@ -478,7 +507,7 @@ test('Web 会话：篡改、过期、换密钥、缺密钥一律拒绝', async (
 
   const { signToken } = require('../cloudfunctions/webSession/webauth')
   // 过期票据：签名合法但已超出有效期
-  const expired = signToken(h.tables.export_accounts[0]._id, WEB_SECRET, Date.now() - 2 * 24 * 60 * 60 * 1000)
+  const expired = signToken(h.tables.export_accounts[0]._id, WEB_SECRET, 'export', Date.now() - 2 * 24 * 60 * 60 * 1000)
   assert.equal((await h.call('webSession', undefined, { token: expired })).ok, false, '过期票据被放行')
   // 换密钥签的票据不认
   assert.equal((await h.call('webSession', undefined, { token: signToken('t', 'another-secret-16-chars-long') })).ok, false)
@@ -488,6 +517,7 @@ test('Web 会话：篡改、过期、换密钥、缺密钥一律拒绝', async (
   try {
     assert.equal((await h.call('webSession', undefined, { token })).ok, false)
     assert.equal((await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })).ok, false)
+    assert.equal((await h.call('webStudentLogin', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })).ok, false)
   } finally {
     process.env.WEB_TOKEN_SECRET = WEB_SECRET
   }
@@ -506,6 +536,485 @@ test('Web 函数不读调用方环境身份：残留的微信身份不会串号'
   assert.deepEqual(session.user, { name: '老师乙', exportId: 'T2', department: '', departmentText: '' })
   // 没有票据时，残留身份也换不到任何东西
   assert.equal((await h.call('webSession', undefined, {})).ok, false)
+})
+
+// —— Web 学助端：与老师同一套自建凭据，账户在 students 集合，票据带 role=student ——
+
+test('Web 学助凭据：姓名 + 学号完全一致才可激活，凭据写入 students 而不是 export_accounts', async () => {
+  const h = createHarness(webFixture())
+  // 姓名或学号对不上：拒绝
+  for (const bad of [{ name: '待绑定丙', studentId: 'X' }, { name: 'X', studentId: 'S3' }, { name: '', studentId: 'S3' }]) {
+    assert.equal((await h.call('webStudentBind', undefined, { ...bad, password: PASSWORD })).ok, false, JSON.stringify(bad))
+  }
+  // 密码太短：拒绝，且不落库
+  assert.equal((await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: 'short' })).ok, false)
+  assert.equal(h.tables.students[2].webPasswordHash, undefined)
+
+  assert.equal((await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })).ok, true)
+  const stored = h.tables.students[2]
+  assert.ok(stored.webPasswordHash && stored.webPasswordSalt, '激活后应写入哈希与盐')
+  assert.equal(JSON.stringify(h.tables.students).includes(PASSWORD), false, '不得存明文密码')
+  assert.equal(h.tables.export_accounts.some(a => a.webPasswordHash), false, '不应写到老师账户上')
+})
+
+test('Web 学助登录：返回 role=student 与脱敏载荷，webSession 可恢复且不泄露 openid/密码字段', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+
+  const login = await h.call('webStudentLogin', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+  assert.equal(login.ok, true)
+  assert.equal(login.role, 'student')
+  assert.ok(login.token, '登录成功应返回票据')
+  // 名单里的部门是 ' administration_and_data '，与老师端同一口径：trim 原值 + 中文展示名
+  assert.deepEqual(login.user, {
+    name: '主管乙',
+    studentId: 'S2',
+    isSupervisor: true,
+    department: 'administration_and_data',
+    departmentText: '行政与数据'
+  })
+  const payload = JSON.stringify(login)
+  assert.equal(payload.includes('webPassword'), false, '登录载荷不得带出口令哈希')
+  assert.equal(payload.includes('openid'), false, '登录载荷不得带出 openid')
+
+  const session = await h.call('webSession', undefined, { token: login.token })
+  assert.equal(session.ok, true)
+  assert.equal(session.role, 'student')
+  assert.deepEqual(session.user, login.user)
+})
+
+test('Web 学助：已激活拒绝重绑，登录失败统一提示', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+  const before = h.tables.students[2].webPasswordHash
+
+  const again = await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: 'attackerpass' })
+  assert.equal(again.ok, false)
+  assert.equal(h.tables.students[2].webPasswordHash, before, '重复绑定不得覆盖已有哈希')
+  assert.equal((await h.call('webStudentLogin', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })).ok, true)
+  assert.equal((await h.call('webStudentLogin', undefined, { name: '待绑定丙', studentId: 'S3', password: 'attackerpass' })).ok, false)
+
+  // 未激活、密码错、学号错、账户不存在返回同一句提示，不泄露账户是否存在
+  const cases = [
+    { name: '待绑定丙', studentId: 'S3', password: 'wrongpassword' },
+    { name: '待绑定丙', studentId: 'S9', password: PASSWORD },
+    { name: '查无此人', studentId: 'S3', password: PASSWORD },
+    { name: '学助甲', studentId: 'S1', password: PASSWORD }
+  ]
+  const msgs = new Set()
+  for (const data of cases) {
+    const res = await h.call('webStudentLogin', undefined, data)
+    assert.equal(res.ok, false)
+    msgs.add(res.msg)
+  }
+  assert.equal(msgs.size, 1, '不同失败原因必须回同一句话，避免枚举账户')
+})
+
+test('学助票据不能调用老师数据接口：role 参与签名，不能靠 id 撞库', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+
+  const guarded = [
+    ['webListForms', {}],
+    ['webCreateMonthlyForm', { month: '2026-11' }],
+    ['webGetSubmissions', { formId: 'f' }],
+    ['webExportData', { formId: 'f' }]
+  ]
+  for (const [fn, base] of guarded) {
+    const res = await h.call(fn, undefined, { ...base, token })
+    assert.equal(res.ok, false, `${fn} 放行了学助票据`)
+    assert.equal(res.forms, undefined)
+    assert.equal(res.rows, undefined)
+    assert.equal(res.url, undefined)
+  }
+  assert.equal(h.uploads.length, 0, '学助票据不得触发导出上传')
+  assert.equal(h.tables.monthly_forms.length, 1, '学助票据不得新建表单')
+
+  // 即便学助记录的 _id 与某条老师账户相同，role=student 也必须被 requireExport 拒绝
+  const seed = webFixture()
+  seed.students.push({ _id: 't', name: '撞号学助', studentId: 'S9', webPasswordSalt: 'salt', webPasswordHash: 'hash' })
+  const collided = createHarness(seed)
+  const { signToken } = require('../cloudfunctions/webSession/webauth')
+  const studentToken = signToken('t', WEB_SECRET, 'student')
+  assert.equal((await collided.call('webSession', undefined, { token: studentToken })).role, 'student')
+  assert.equal((await collided.call('webListForms', undefined, { token: studentToken })).ok, false, 'role=student 的票据混进了老师接口')
+})
+
+test('旧版老师票据（无 role）升级后仍可用于老师接口', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  // 手工构造升级前格式的票据：body 里没有 role 字段
+  const crypto = require('node:crypto')
+  // webauth.js 通过宿主 require 加载，过期判断用的是真实时钟，这里给一个远期时间
+  const exp = new Date('2099-01-01T00:00:00Z').getTime()
+  const body = Buffer.from(JSON.stringify({ sub: 't', exp })).toString('base64url')
+  const sig = Buffer.from(crypto.createHmac('sha256', WEB_SECRET).update(body).digest()).toString('base64url')
+  const token = `${body}.${sig}`
+  const session = await h.call('webSession', undefined, { token })
+  assert.equal(session.ok, true)
+  assert.equal(session.role, 'export', '缺 role 的旧票据按老师处理')
+  assert.equal((await h.call('webListForms', undefined, { token })).ok, true)
+})
+
+test('小程序登录/绑定不回传 Web 口令字段', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+
+  const teacher = await h.call('login', 'wx-teacher')
+  assert.equal(teacher.user.exportId, 'T1', '小程序仍能拿到身份本身需要的字段')
+  assert.equal(JSON.stringify(teacher.user).includes('webPassword'), false, '老师登录载荷不得带口令哈希')
+
+  const bound = await h.call('bindStudent', 'new-user', { name: '待绑定丙', studentId: 'S3' })
+  assert.equal(bound.ok, true)
+  assert.equal(JSON.stringify(bound.user).includes('webPassword'), false, '绑定结果不得带口令哈希')
+
+  const student = await h.call('login', 'new-user')
+  assert.equal(student.user.studentId, 'S3')
+  assert.equal(JSON.stringify(student.user).includes('webPassword'), false, '学助登录载荷不得带口令哈希')
+})
+
+// —— Web 学助端：网页填报表单 ——
+// 读：webGetForm（只回传自己的提交 + 选项）
+// 写：webSubmitForm（与小程序 submitForm 共用同一条 submissions，身份由票据解析）
+
+test('Web 学助表单：只认学助票据，未提交时返回本月表单与选项', async () => {
+  const h = createHarness(webFixture())
+  // 无票据 / 老师票据都拒绝
+  assert.equal((await h.call('webGetForm', undefined, {})).ok, false)
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const teacher = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  assert.equal((await h.call('webGetForm', undefined, { token: teacher.token })).ok, false)
+
+  await h.call('webStudentBind', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+  const res = await h.call('webGetForm', undefined, { token })
+  assert.equal(res.ok, true)
+  assert.equal(res.form.month, '2026-10')
+  assert.equal(res.form.status, 'open')
+  assert.equal(res.bound, true)
+  assert.equal(res.canSubmit, true)
+  assert.equal(res.submission, null)
+  assert.deepEqual(res.meta.locationOptions, ['University gift shop', 'ABE303', 'ABW709'])
+  assert.deepEqual(res.meta.statusOptions, ['已发布', '已完成未发布', '未完成'])
+  assert.equal(res.meta.projectRows.length, 14)
+  assert.equal(JSON.stringify(res).includes('openid'), false, '表单载荷不得带出 openid')
+})
+
+test('Web 学助表单：只回传自己的提交，小程序提交的内容可以直接回填', async () => {
+  const h = createHarness(webFixture())
+  // 两个学助各提交一条：学助甲 30 小时，主管乙 10 小时
+  await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 30 })
+  await h.call('submitForm', 'wx-b', { ...answer, dutyHours: 10 })
+
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const res = await h.call('webGetForm', undefined, { token })
+  assert.equal(res.ok, true)
+  assert.equal(res.submission.answers.answer1, '30')
+  assert.equal(res.submission.answers.answer2, '周一上午')
+  assert.equal(res.submission.projectRows.length, 1)
+  assert.equal(res.submission.projects.length, 0, '旧版记录没有逐项 projects')
+  const payload = JSON.stringify(res)
+  assert.equal(payload.includes('wx-b'), false, '不得带出其他学助的 openid')
+  assert.equal(payload.includes('主管乙'), false, '不得带出其他学助的数据')
+})
+
+test('Web 学助表单：本月没有表单时返回空表单而不是报错', async () => {
+  const seed = webFixture()
+  seed.monthly_forms = []
+  const h = createHarness(seed)
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const res = await h.call('webGetForm', undefined, { token })
+  assert.equal(res.ok, true)
+  assert.equal(res.form, null)
+  assert.equal(res.canSubmit, false)
+  assert.ok(res.meta)
+})
+
+test('Web 学助提交：与小程序写同一条记录，重复提交覆盖且计算结果一致', async () => {
+  const payload = {
+    dutyHours: 30,
+    shiftTime: '周一上午',
+    locationIndex: 1,
+    projects: [teamEntry()],
+    appeal: '补充说明'
+  }
+  const mini = createHarness(webFixture())
+  const miniResult = await mini.call('submitForm', 'wx-b', payload)
+  assert.equal(miniResult.ok, true)
+
+  const h = createHarness(webFixture())
+  // 老师票据不能提交
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const teacher = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  assert.equal((await h.call('webSubmitForm', undefined, { token: teacher.token, ...payload })).ok, false)
+  assert.equal((h.tables.submissions || []).length, 0)
+
+  await h.call('webStudentBind', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '主管乙', studentId: 'S2', password: PASSWORD })
+  const webResult = await h.call('webSubmitForm', undefined, { token, ...payload })
+  assert.equal(webResult.ok, true)
+  assert.deepEqual(webResult.calc, miniResult.calc, '两端计算结果必须一致')
+  assert.equal(h.tables.submissions.length, 1)
+  assert.equal(h.tables.submissions[0].openid, 'wx-b')
+  assert.equal(h.tables.submissions[0].department, 'Administration_and_Data')
+  assert.equal(h.tables.submissions[0].source, 'student')
+
+  // 除 _id/时间戳外，落库结构必须与小程序端一致
+  const strip = row => {
+    const { _id, createTime, updateTime, ...rest } = row
+    return rest
+  }
+  assert.deepEqual(strip(h.tables.submissions[0]), strip(mini.tables.submissions[0]))
+
+  // 小程序端能读到网页写的同一条记录
+  const miniView = await h.call('getForm', 'wx-b')
+  assert.equal(miniView.submission._id, h.tables.submissions[0]._id)
+  assert.equal(miniView.submission.answers.answer1, '30')
+
+  // 再提交一次：覆盖同一条，不新增
+  const again = await h.call('webSubmitForm', undefined, { token, ...payload, dutyHours: 12 })
+  assert.equal(again.ok, true)
+  assert.equal(h.tables.submissions.length, 1)
+  assert.equal(h.tables.submissions[0].calc.dutyHours, 12)
+})
+
+test('Web 学助提交：只有值班、没有项目也能提交', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const res = await h.call('webSubmitForm', undefined, {
+    token,
+    dutyHours: 7.5,
+    shiftTime: '周三下午',
+    locationIndex: 2,
+    projects: [],
+    appeal: '本月只有值班'
+  })
+  assert.equal(res.ok, true)
+  const row = h.tables.submissions[0]
+  assert.deepEqual(row.projects, [])
+  assert.deepEqual(row.projectRows, [])
+  assert.equal(row.calc.projectHours, 0)
+  assert.equal(row.calc.totalHours, 7.5)
+  assert.equal(row.calc.effectiveHours, 7.5)
+  assert.equal(row.answers.answer2, '周三下午')
+  assert.equal(row.answers.answer3, 'ABW709')
+  assert.equal(row.answers.answer6, '本月只有值班')
+})
+
+test('Web 学助提交：非法地点下标落成空字符串，不会命中原型链', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const base = { token, dutyHours: 1, shiftTime: '', projects: [], appeal: '' }
+
+  assert.equal((await h.call('webSubmitForm', undefined, { ...base, locationIndex: 'constructor' })).ok, true)
+  assert.equal(h.tables.submissions[0].answers.answer3, '')
+
+  // null / undefined 不能因为 Number(null) === 0 被当成第一个地点
+  await h.call('webSubmitForm', undefined, { ...base, locationIndex: null })
+  assert.equal(h.tables.submissions[0].answers.answer3, '')
+  await h.call('webSubmitForm', undefined, { ...base, locationIndex: 1 })
+  assert.equal(h.tables.submissions[0].answers.answer3, 'ABE303')
+})
+
+test('Web 学助提交：旧版按类型计数的记录会保留，不会被新表单清掉', async () => {
+  const h = createHarness(webFixture())
+  // 旧版提交：只有 projectRows（集体活动参与 2 次），没有 projects
+  await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 5 })
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+
+  const view = await h.call('webGetForm', undefined, { token })
+  assert.equal(view.submission.projects.length, 0)
+  assert.equal(view.submission.projectRows.length, 1)
+
+  const result = await h.call('webSubmitForm', undefined, {
+    token,
+    dutyHours: 5,
+    shiftTime: '',
+    locationIndex: -1,
+    projects: [teamEntry({ key: 'poster', name: '海报', role: 'participant', status: '已发布', actualHours: 1 })],
+    appeal: ''
+  })
+  assert.equal(result.ok, true)
+  const row = h.tables.submissions[0]
+  assert.equal(row.legacyProjectRows.length, 1)
+  assert.equal(row.legacyProjectRows[0].key, 'team_activity')
+  assert.equal(row.projects.length, 1)
+  // 旧记录：集体活动参与 2 × 2 = 4；新记录：海报参与 1 × 1 × 0.3 = 0.3
+  assert.equal(row.calc.projectHours, 4.3)
+  assert.equal(row.answers.answer5, '测试项目、海报')
+})
+
+test('Web 学助表单：未绑定微信只读，提交被拒绝', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '待绑定丙', studentId: 'S3', password: PASSWORD })
+
+  const view = await h.call('webGetForm', undefined, { token })
+  assert.equal(view.ok, true)
+  assert.equal(view.bound, false)
+  assert.equal(view.identitySource, '')
+  assert.equal(view.canSubmit, false)
+  assert.equal(view.submission, null)
+
+  const result = await h.call('webSubmitForm', undefined, {
+    token,
+    dutyHours: 1,
+    shiftTime: '',
+    locationIndex: -1,
+    projects: [],
+    appeal: ''
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.msg, '请先在小程序完成微信绑定后再填写')
+  assert.equal((h.tables.submissions || []).length, 0)
+})
+
+test('Web 临时身份：WEB_ALLOW_UNBOUND=true 时未绑定学助可提交，并生成 web 身份', async () => {
+  await withUnboundWeb(async () => {
+    const h = createHarness(webFixture())
+    const { token } = await loginStudent(h, '待绑定丙', 'S3')
+
+    const view = await h.call('webGetForm', undefined, { token })
+    assert.equal(view.ok, true)
+    assert.equal(view.bound, false)
+    assert.equal(view.identitySource, '')
+    assert.equal(view.canSubmit, true, '开关打开后未绑定也可以先填')
+
+    const result = await h.call('webSubmitForm', undefined, {
+      token,
+      dutyHours: 8,
+      shiftTime: '周二',
+      locationIndex: 0,
+      projects: [teamEntry()],
+      appeal: ''
+    })
+    assert.equal(result.ok, true)
+
+    const stu = h.tables.students[2]
+    assert.equal(stu.openid, 'web:c')
+    assert.equal(stu.openidSource, 'web')
+    assert.equal(h.tables.submissions[0].openid, 'web:c')
+
+    const again = await h.call('webGetForm', undefined, { token })
+    assert.equal(again.bound, false)
+    assert.equal(again.identitySource, 'web')
+    assert.equal(again.canSubmit, true)
+    assert.equal(again.submission.answers.answer1, '8')
+
+    // 老师端进度：有身份键（web:<_id>）即计入 bound，能正常显示已提交与工时
+    const progress = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+    const row = progress.rows.find(r => r.studentId === 'S3')
+    assert.equal(row.identitySource, 'web')
+    assert.equal(row.bound, true)
+    assert.equal(row.submitted, true)
+    assert.equal(row.effectiveHours, result.calc.effectiveHours)
+  })
+})
+
+test('Web 临时身份：小程序绑定真实微信时迁移历史提交并转为 wechat', async () => {
+  await withUnboundWeb(async () => {
+    const h = createHarness(webFixture())
+    const { token } = await loginStudent(h, '待绑定丙', 'S3')
+    const submitted = await h.call('webSubmitForm', undefined, {
+      token,
+      dutyHours: 6,
+      shiftTime: '',
+      locationIndex: -1,
+      projects: [],
+      appeal: ''
+    })
+    assert.equal(submitted.ok, true)
+    assert.equal(h.tables.students[2].openid, 'web:c')
+
+    // 学生到小程序绑定真实微信：允许接管网页身份，并把历史提交迁走
+    const bound = await h.call('bindStudent', 'wx-new', { name: '待绑定丙', studentId: 'S3' })
+    assert.equal(bound.ok, true)
+    assert.equal(bound.user.openid, 'wx-new')
+    assert.equal(h.tables.students[2].openid, 'wx-new')
+    assert.equal(h.tables.students[2].openidSource, 'wechat')
+    assert.equal(h.tables.submissions[0].openid, 'wx-new')
+
+    const mini = await h.call('getForm', 'wx-new')
+    assert.equal(mini.submission._id, h.tables.submissions[0]._id)
+    assert.equal(mini.submission.answers.answer1, '6')
+
+    const view = await h.call('webGetForm', undefined, { token })
+    assert.equal(view.bound, true)
+    assert.equal(view.identitySource, 'wechat')
+    assert.equal(view.submission.answers.answer1, '6')
+
+    // 转正后不能再被其他微信抢绑
+    assert.equal((await h.call('bindStudent', 'wx-other', { name: '待绑定丙', studentId: 'S3' })).ok, false)
+
+    const progress = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
+    assert.equal(progress.rows.find(r => r.studentId === 'S3').identitySource, 'wechat')
+  })
+})
+
+test('Web 临时身份：开关关闭后，已生成网页身份的学助仍可继续提交', async () => {
+  const h = createHarness(webFixture())
+  const { token } = await loginStudent(h, '待绑定丙', 'S3')
+  await withUnboundWeb(async () => {
+    assert.equal((await h.call('webSubmitForm', undefined, {
+      token,
+      dutyHours: 2,
+      shiftTime: '',
+      locationIndex: -1,
+      projects: [],
+      appeal: ''
+    })).ok, true)
+  })
+
+  // withUnboundWeb 已恢复默认（未设置）。已有 openid 的网页身份不受开关影响。
+  const view = await h.call('webGetForm', undefined, { token })
+  assert.equal(view.identitySource, 'web')
+  assert.equal(view.canSubmit, true)
+  const again = await h.call('webSubmitForm', undefined, {
+    token,
+    dutyHours: 3,
+    shiftTime: '',
+    locationIndex: -1,
+    projects: [],
+    appeal: ''
+  })
+  assert.equal(again.ok, true)
+  assert.equal(h.tables.submissions[0].calc.dutyHours, 3)
+})
+
+test('Web 学助提交：截止、已关闭、已计算与字段非法都拒绝', async () => {
+  const h = createHarness(webFixture())
+  await h.call('webStudentBind', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const { token } = await h.call('webStudentLogin', undefined, { name: '学助甲', studentId: 'S1', password: PASSWORD })
+  const good = { dutyHours: 1, shiftTime: '', locationIndex: 0, projects: [teamEntry()], appeal: '' }
+
+  // 字段非法：负工时、项目名空、实际耗时负数、申诉超长
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good, dutyHours: -1 })).ok, false)
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good, projects: [{ ...teamEntry(), name: '' }] })).ok, false)
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good, projects: [{ ...teamEntry(), actualHours: -1 }] })).ok, false)
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good, appeal: 'x'.repeat(1001) })).ok, false)
+  assert.equal(h.tables.submissions.length, 0)
+
+  // 截止时间已过
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good })).ok, false)
+  assert.equal((await h.call('webGetForm', undefined, { token })).canSubmit, false)
+  assert.equal(h.tables.submissions.length, 0)
+
+  // 已关闭 / 已计算
+  h.tables.monthly_forms[0].deadline = '2026-10-20T00:00:00Z'
+  h.tables.monthly_forms[0].status = 'closed'
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good })).ok, false)
+  h.tables.monthly_forms[0].status = 'calculated'
+  assert.equal((await h.call('webSubmitForm', undefined, { token, ...good })).ok, false)
+  assert.equal((await h.call('webGetForm', undefined, { token })).canSubmit, false)
+  assert.equal(h.tables.submissions.length, 0)
 })
 
 test('Web 与小程序的身份来源互不越界，且 webauth.js 各副本一致', () => {
@@ -1152,9 +1661,11 @@ test.todo('云函数安全规则保持 auth != null，且未登录模式不覆�
 // 「web* 只认自建凭据、不读 getWXContext()」已由上面的用例在源码与行为两层覆盖，
 // 但下面这些只有真实环境能验证：
 test.todo('未登录模式在真实网页中可用：控制台已开启、数据库用安全规则、web* 已单独放行 invoke')
-// 七个 web* 目录共用同一份 webauth.js：webLogin 签发，webSession 与四个业务函数验签，
+// 十一个 web* 目录共用同一份 webauth.js：webLogin / webStudentLogin 签发，其余需要身份的接口验签，
 // 值不一致就会全部验不过；而测试环境与正式环境的密钥必须不同，避免拿测试票据去撞正式环境。
-test.todo('七个 web* 云函数已配置同一个 WEB_TOKEN_SECRET，且测试/正式环境各用独立密钥')
+test.todo('十一个 web* 中需要签发/验签的九个已配置同一个 WEB_TOKEN_SECRET，且测试/正式环境各用独立密钥')
+test.todo('试点结束后清理临时网页身份：关闭 WEB_ALLOW_UNBOUND、迁移/清理 web:<_id> 账户，并统一 submissions 身份键')
+test.todo('网页身份转正前需要更强证明（网页密码或管理员确认），当前沿用首次绑定信任模型')
 test.todo('Web 登录需要限流/锁定，防止口令被在线暴力破解')
 
 const project = (overrides = {}) => ({ key: 'poster', name: '迎新海报', role: 'coordinator', status: '已发布', completionForm: '公众号', actualHours: 7.5, ...overrides })
@@ -1182,7 +1693,7 @@ test('加权模块副本一致，全部项目 × 状态 × 分工在提交、前
   const fs = require('node:fs')
   const path = require('node:path')
   const source = fs.readFileSync(path.join(__dirname, '../miniprogram/config/project-weighting.js'), 'utf8')
-  for (const name of ['submitForm', 'exportData', 'webExportData']) {
+  for (const name of ['submitForm', 'exportData', 'webExportData', 'webSubmitForm']) {
     assert.equal(fs.readFileSync(path.join(__dirname, '../cloudfunctions', name, 'project-weighting.js'), 'utf8'), source)
   }
   const { buildSheets } = require('../cloudfunctions/exportData/exportCore')

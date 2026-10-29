@@ -121,7 +121,7 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
           ) : (
             <table>
               <thead>
-                <tr><th>姓名</th><th>工号</th><th>部门</th><th>绑定</th><th>状态</th><th>有效工时</th></tr>
+                <tr><th>姓名</th><th>工号</th><th>部门</th><th>身份</th><th>状态</th><th>有效工时</th></tr>
               </thead>
               <tbody>
                 {visible.map(row => (
@@ -130,7 +130,7 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
                     <td>{row.studentId}</td>
                     {/* 展示文本由服务端按部门映射表算好，页面不再自己实现一套 */}
                     <td>{row.departmentText || '—'}</td>
-                    <td>{row.bound ? '已绑定' : '未绑定'}</td>
+                    <td>{row.identitySource === 'web' ? '网页账户' : row.bound ? '已绑定' : '未绑定'}</td>
                     <td>{row.submitted ? '已填报' : row.zeroFilled ? '月结补零' : '未提交'}</td>
                     {/* 未提交没有申报时长，显示 — 而不是 0 */}
                     <td>{row.effectiveHours === null ? '—' : row.effectiveHours}</td>

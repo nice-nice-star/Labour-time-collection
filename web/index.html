@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPRO 学助工时申报</title>
     <!--
+      站点图标与小程序启动页同一个 CPRO logo：public/ 下的文件会被 Vite 原样拷到 dist 根目录。
+      favicon.svg 没有，用 PNG + ICO 是为了兼容只认 /favicon.ico 的浏览器与抓取器。
+    -->
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!--
       微信云开发 Web SDK：加载后会在 window 上挂载 cloud 对象。
       未登录模式必须用它，且不会调用 cloudbase_auth 云函数。
       升级版本改这里即可。

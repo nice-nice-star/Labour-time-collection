@@ -292,6 +292,12 @@ button.app-logout:hover:not(:disabled) {
   max-width: 560px;
 }
 
+/* 学助月度表单在居中布局里：面板本身要占满可用宽度，再靠 max-width 收窄 */
+.student-form {
+  width: 100%;
+  max-width: 980px;
+}
+
 .panel-head {
   display: flex;
   align-items: center;
@@ -355,6 +361,242 @@ button.ghost:disabled {
 
 .card h1 {
   color: var(--brand);
+}
+
+/* 登录页身份切换：老师 / 学助。两个 tab 只切换提交到哪组云函数，不改变外观基调。 */
+.role-switch {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 4px;
+  background: var(--brand-soft);
+  border-radius: 9px;
+}
+
+.role-tab {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--brand);
+  background: none;
+  border-radius: 7px;
+}
+
+.role-tab:hover:not(:disabled) {
+  background: rgb(115 33 96 / 8%);
+}
+
+.role-tab.active,
+.role-tab.active:hover:not(:disabled) {
+  color: #fff;
+  background: var(--brand);
+  box-shadow: 0 1px 2px rgb(31 35 41 / 12%);
+}
+
+.role-tab:disabled {
+  color: #b9a5b5;
+  background: none;
+}
+
+/* ============================================================
+   学助月度表单
+   ============================================================ */
+
+.sf-section {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sf-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.sf-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sf-section-head .helper {
+  margin: 0;
+}
+
+.sf-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+  letter-spacing: 0.08em;
+}
+
+.sf-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+
+.sf-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sf-field > label,
+.sf-label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sf-wide {
+  grid-column: 1 / -1;
+}
+
+.sf-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 2px 0 16px;
+  font-size: 14px;
+}
+
+.sf-choices label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sf-choices input[type='radio'] {
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.student-form select,
+.student-form textarea {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+}
+
+.student-form select:focus,
+.student-form textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(115 33 96 / 12%);
+}
+
+.student-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.student-form input:disabled,
+.student-form select:disabled,
+.student-form textarea:disabled {
+  color: var(--muted);
+  background: #f7f7f8;
+}
+
+.sf-project {
+  padding: 16px 16px 2px;
+  margin-bottom: 14px;
+  background: #fbfafb;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.sf-project-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sf-project-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.sf-project-head button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.sf-legacy {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
+  background: #fdf8ec;
+  border: 1px solid #f0e2bf;
+  border-radius: 8px;
+}
+
+/* 网页临时身份 / 尚未绑定微信的提示；与只读状态的绿色 notice 区分开 */
+.sf-identity {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #7a5b00;
+  background: #fdf8ec;
+  border: 1px solid #f0e2bf;
+  border-radius: 8px;
+}
+
+.sf-legacy ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.sf-legacy .helper {
+  margin: 6px 0 0;
+}
+
+.sf-add {
+  margin-top: 4px;
+}
+
+.sf-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.sf-submit .helper {
+  margin: 0;
+}
+
+.sf-submit button {
+  padding: 11px 22px;
+}
+
+.sf-empty {
+  padding: 8px 0;
+}
+
+.sf-empty .helper {
+  margin-bottom: 14px;
 }
 
 /* ============================================================
@@ -488,6 +730,21 @@ td:first-child {
 
 .filter-empty .helper {
   margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+  .sf-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sf-submit {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sf-submit button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 820px) {

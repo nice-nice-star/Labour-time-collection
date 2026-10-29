@@ -3,9 +3,10 @@ import AppShell from './components/AppShell'
 import LoginPage from './pages/LoginPage'
 import FormsPage from './pages/FormsPage'
 import NewFormPage from './pages/NewFormPage'
+import StudentFormPage from './pages/StudentFormPage'
 import SubmissionsPage from './pages/SubmissionsPage'
 import { fetchWebSession } from './lib/api'
-import type { MonthlyForm, WebUser } from './lib/api'
+import type { MonthlyForm, WebRole, WebUser } from './lib/api'
 import { clearToken, loadToken } from './lib/session'
 
 type View = { name: 'forms' } | { name: 'new' } | { name: 'progress'; form: MonthlyForm }
@@ -13,6 +14,7 @@ type View = { name: 'forms' } | { name: 'new' } | { name: 'progress'; form: Mont
 interface Session {
   user: WebUser
   token: string
+  role: WebRole
 }
 
 export default function App() {
@@ -29,7 +31,8 @@ export default function App() {
     fetchWebSession(stored)
       .then(res => {
         if (cancelled) return
-        if (res.ok && res.user) setSession({ user: res.user, token: stored })
+        // 旧票据没有 role 字段，服务端会按老师处理；这里同样兜底成 export
+        if (res.ok && res.user) setSession({ user: res.user, token: stored, role: res.role === 'student' ? 'student' : 'export' })
         else clearToken()
       })
       .catch(() => { if (!cancelled) clearToken() })
@@ -37,8 +40,8 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
-  function handleLoggedIn(user: WebUser, token: string) {
-    setSession({ user, token })
+  function handleLoggedIn(user: WebUser, token: string, role: WebRole) {
+    setSession({ user, token, role })
     setView({ name: 'forms' })
     setChecking(false)
   }
@@ -57,6 +60,11 @@ export default function App() {
     )
   }
   if (!session) return <LoginPage onLoggedIn={handleLoggedIn} />
+
+  // 学助落到自己的月度表单页；表单读写走 webGetForm / webSubmitForm
+  if (session.role === 'student') {
+    return <StudentFormPage token={session.token} user={session.user} onLogout={handleLogout} />
+  }
 
   if (view.name === 'new') {
     return (

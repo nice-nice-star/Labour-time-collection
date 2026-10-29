@@ -1,8 +1,8 @@
 // cloudfunctions/webLogin/index.js
-// Web 管理端登录：校验自建口令，签发无状态会话票据。
+// 老师网页端登录：校验自建口令，签发 role=export 的无状态会话票据。
 // 身份只来自姓名 + 工号 + 密码，绝不读 cloud.getWXContext()。
 const cloud = require('wx-server-sdk')
-const { readSecret, verifyPassword, signToken } = require('./webauth')
+const { readSecret, verifyPassword, signToken, ROLES } = require('./webauth')
 const { departmentText } = require('./departments')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -29,7 +29,8 @@ exports.main = async (event = {}) => {
   const department = String(account.department || '').trim()
   return {
     ok: true,
-    token: signToken(account._id, secret),
+    role: ROLES.EXPORT,
+    token: signToken(account._id, secret, ROLES.EXPORT),
     user: {
       name: account.name,
       exportId: account.exportId,

@@ -49,7 +49,7 @@
         </view>
         <view class="roster-row" wx:for="{{visibleRows}}" wx:key="studentId">
           <view class="roster-main">
-            <view class="roster-name"><text>{{item.name}}</text><text class="role-mark">{{item.isSupervisor ? '主管' : '学助'}}</text></view>
+            <view class="roster-name"><text>{{item.name}}</text><text class="role-mark">{{item.isSupervisor ? '主管' : '学助'}}</text><text wx:if="{{item.identitySource === 'web'}}" class="role-mark">网页</text></view>
             <text class="roster-dept">{{item.departmentText}}</text>
           </view>
           <view class="roster-side">
