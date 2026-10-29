@@ -8,7 +8,7 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 
 完整流程见 [测试工作流](docs/testing-workflow.md)。本地使用 Node.js 18+，运行 `npm test` 验证多身份业务逻辑，运行 `npm run test:fixtures` 生成虚构账户数据。
 
-开发版与体验版需要在 `miniprogram/config/environment.js` 配置独立测试云环境 ID；未配置时会停止连接，避免误写正式数据。本地测试无需真实微信或云环境。
+开发版与体验版使用 `miniprogram/config/environment.js` 的 `test`，正式版使用 `production`；当前各版本共用同一个云环境和数据库。以后需要隔离数据时，可将 `test` 改为独立测试云环境 ID；未配置时会停止连接。本地测试无需真实微信或云环境。
 
 现在是测试环境，没有历史遗留数据需要处理。
 
@@ -178,7 +178,7 @@ Web 端的认证函数：
 - 票据密钥来自云函数环境变量 **`WEB_TOKEN_SECRET`**（至少 16 字符）。**取不到就拒绝服务**，绝不退回默认值。
   **需要签发或验签的九个 `web*` 函数必须配同一个值**（`webLogin` / `webStudentLogin` 签发，
   `webSession`、`webGetForm`、`webSubmitForm` 与四个管理端数据函数验签；
-  `webBind` / `webStudentBind` 只做口令哈希，不读密钥）。值不一致会全部失败，测试环境与正式环境各用独立密钥。
+  `webBind` / `webStudentBind` 只做口令哈希，不读密钥）。值不一致会全部失败；当前只有一个云环境，只需配一个值，以后隔离环境时再各用独立密钥。
 - 登录失败一律回同一句提示（未激活 / 密码错 / 学号或工号错 / 账户不存在），避免被拿来枚举账户。
 - `webauth.js` 在十一个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
   `getWXContext()`**（未登录模式下那是残留身份）。

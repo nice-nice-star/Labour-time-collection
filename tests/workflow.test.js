@@ -50,15 +50,17 @@ const teamEntry = (overrides = {}) => ({
   completionForm: '现场', actualHours: 2, ...overrides
 })
 
-test('开发/体验/正式版本选择环境；缺失、同环境、未知版本拒绝连接', () => {
+test('开发/体验/正式版本选择环境；允许共用环境，缺失或未知版本拒绝连接', () => {
   const config = { production: 'prod', test: 'test' }
   assert.equal(resolveCloudEnv('release', config), 'prod')
   for (const version of ['develop', 'trial']) {
     assert.equal(resolveCloudEnv(version, config), 'test')
     assert.throws(() => resolveCloudEnv(version, { production: 'prod', test: '' }))
-    assert.throws(() => resolveCloudEnv(version, { production: 'prod', test: 'prod' }))
+    assert.equal(resolveCloudEnv(version, { production: 'prod', test: 'prod' }), 'prod')
+    assert.equal(resolveCloudEnv(version), resolveCloudEnv('release'))
   }
   assert.throws(() => resolveCloudEnv(undefined, config))
+  assert.throws(() => resolveCloudEnv('release', { production: '', test: 'test' }))
 })
 
 test('前端与云端的费率表、标签表完全一致（防止键值分离后两处漂移）', () => {

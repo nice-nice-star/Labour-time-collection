@@ -40,12 +40,12 @@ npm run test:fixtures
 模拟器有意只覆盖当前代码调用的 SDK 子集：`skip`/`limit` 会真实切片，但不强制平台单次读取上限；
 数据库访问规则、事务、真实网络与 Excel 编码都没有实现。因此不能用于判断云端并发安全、容量或导出文件是否能被 Excel 打开。
 
-## 3. 独立云环境准备（一次性）
+## 3. 云环境准备（一次性）
 
-1. 在同一小程序的云开发控制台准备一个独立测试环境，记录它的环境 ID。测试环境与正式环境使用相同集合结构，使用虚构数据，不复制真实个人资料。
-2. 编辑 `miniprogram/config/environment.js` 中的 `test`。`production` 当前保留原代码里的环境 ID，发布前确认它确实是正式环境。
-3. 开发版 `develop`、体验版 `trial` 自动使用 `test`；正式版 `release` 使用 `production`。测试 ID 为空、与正式 ID 相同或版本无法识别时，初始化会抛错并停止连接；不会自动回退正式环境。首次配置前开发工具无法正常联调是预期行为。
-4. 在开发者工具中明确选择测试云环境，分别部署 `cloudfunctions` 下全部 20 个函数（9 个小程序端函数 + 11 个 `web*` 函数）并安装云端依赖；其中需要签发或验签的 9 个 `web*` 函数统一配同一个 `WEB_TOKEN_SECRET`（见 README「Web 端」）。临时放行未绑定学助时，给 `webGetForm` 和 `webSubmitForm` **都**配 `WEB_ALLOW_UNBOUND=true`。函数使用 `DYNAMIC_CURRENT_ENV`；部署目标也必须是测试环境，仅修改前端配置不能替代部署。改动部门字段后至少要重新部署 `submitForm`、`calculateMonthly`、`exportData`（`calculateMonthly` 目录新增的 `constants.js` 随函数一起部署，不需要单独操作）。「填报情况」页依赖新增的 `getSubmissions`；`source` 字段上线后需重新部署 `submitForm` 与 `calculateMonthly`，否则进度会把补零记录算成已填报。
+1. 当前只有一个云环境，开发版、体验版与正式版共用该环境及数据库。以后需要隔离数据时，在同一小程序的云开发控制台准备独立测试环境；使用相同集合结构和虚构数据，不复制真实个人资料。
+2. `miniprogram/config/environment.js` 中 `production` 与 `test` 当前指向同一个环境 ID；以后需要隔离数据时，把 `test` 改成独立测试环境 ID，并确认 `production` 是正式环境。
+3. 开发版 `develop`、体验版 `trial` 自动使用 `test`；正式版 `release` 使用 `production`。允许两个 ID 相同；所选环境 ID 为空或版本无法识别时，初始化会抛错并停止连接，不会自动回退其他环境。
+4. 在开发者工具中明确选择当前云环境，分别部署 `cloudfunctions` 下全部 20 个函数（9 个小程序端函数 + 11 个 `web*` 函数）并安装云端依赖；其中需要签发或验签的 9 个 `web*` 函数统一配同一个 `WEB_TOKEN_SECRET`（见 README「Web 端」）。临时放行未绑定学助时，给 `webGetForm` 和 `webSubmitForm` **都**配 `WEB_ALLOW_UNBOUND=true`。函数使用 `DYNAMIC_CURRENT_ENV`；部署目标也必须是当前使用的云环境，仅修改前端配置不能替代部署。改动部门字段后至少要重新部署 `submitForm`、`calculateMonthly`、`exportData`（`calculateMonthly` 目录新增的 `constants.js` 随函数一起部署，不需要单独操作）。「填报情况」页依赖新增的 `getSubmissions`；`source` 字段上线后需重新部署 `submitForm` 与 `calculateMonthly`，否则进度会把补零记录算成已填报。
 5. 创建 `students`、`export_accounts`、`monthly_forms`、`submissions` 四个集合。前端当前不直接访问数据库，规则应禁止客户端直接读写账户和业务记录，仅允许受控服务端操作；在云端验证这些规则。
 6. 向前两个集合导入虚构账户。`students` 记录必须带 `department`，取值用规范值或 README 里的中文名/英文显示名（会归一化成规范值；其他写法写空字符串，导出该列为空）。`monthly_forms`、`submissions` 本轮开始时为空。为测试环境单独配置并核对 `calculateMonthly/config.json` 的定时触发器。
 7. 从真实小程序页面绑定并调用云函数验证身份。控制台直接运行函数的身份上下文不等同于小程序调用；不要用控制台缺少 OPENID 的失败判定真实登录失败。
