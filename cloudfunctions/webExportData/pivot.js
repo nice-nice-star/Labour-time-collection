@@ -76,7 +76,7 @@ function pad(n) { return String(n).padStart(2, '0') }
 
 /**
  * 项目列：一类项目一列，只保留有数字费率的项目——「按实际/待定」的接待活动、
- * 管理项目没有列（它们本来就算不出折算工时）。顺序与 PROJECT_ROWS 一致。
+ * 日常运营没有列（它们本来就算不出折算工时）。顺序与 PROJECT_ROWS 一致。
  * @returns {{key:string, label:string}[]}
  */
 function projectColumns() {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import AppShell from './components/AppShell'
 import LoginPage from './pages/LoginPage'
 import FormsPage from './pages/FormsPage'
@@ -7,6 +7,7 @@ import StudentFormPage from './pages/StudentFormPage'
 import SubmissionsPage from './pages/SubmissionsPage'
 import { fetchWebSession } from './lib/api'
 import type { MonthlyForm, WebRole, WebUser } from './lib/api'
+import { useLanguage } from './lib/i18n'
 import { clearToken, loadToken } from './lib/session'
 
 type View = { name: 'forms' } | { name: 'new' } | { name: 'progress'; form: MonthlyForm }
@@ -18,6 +19,7 @@ interface Session {
 }
 
 export default function App() {
+  const { t } = useLanguage()
   const [session, setSession] = useState<Session | null>(null)
   const [view, setView] = useState<View>({ name: 'forms' })
   // 有本地票据时要先向服务端确认一次，不能凭本地有没有票据就当作已登录
@@ -40,22 +42,24 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
-  function handleLoggedIn(user: WebUser, token: string, role: WebRole) {
+  // 用 useCallback 固定身份：切换语言会让 App 重渲染，若 onLogout 每次都是新函数，
+  // 学助表单页的 load 依赖会变化并重新拉取，冲掉尚未提交的编辑。
+  const handleLoggedIn = useCallback((user: WebUser, token: string, role: WebRole) => {
     setSession({ user, token, role })
     setView({ name: 'forms' })
     setChecking(false)
-  }
+  }, [])
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     clearToken()
     setSession(null)
     setView({ name: 'forms' })
-  }
+  }, [])
 
   if (checking) {
     return (
-      <AppShell sidebar={false}>
-        <p className="helper">正在恢复登录状态…</p>
+      <AppShell sidebar={false} showLanguageToggle={false}>
+        <p className="helper">{t('正在恢复登录状态…')}</p>
       </AppShell>
     )
   }

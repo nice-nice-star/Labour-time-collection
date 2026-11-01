@@ -35,6 +35,14 @@ function isOpen(form, canIdentify, now = Date.now()) {
   return Number.isNaN(deadline) || now <= deadline
 }
 
+// 临时补填方案：当前月没有任何表单时，回退到最近一个「已经开始、仍开放、
+// 未过截止时间」的月份（例如 11 月补 10 月）。已截止/已统计/未来月份不回退。
+function latestFillableFallback(forms, currentYm) {
+  return forms.find(form =>
+    isOpen(form, true) && String(form.month || '') <= currentYm
+  ) || null
+}
+
 // 只回传学助自己的填报内容；openid 与名单字段留在服务端。
 function publicSubmission(record) {
   if (!record) return null
@@ -68,16 +76,28 @@ exports.main = async (event = {}) => {
   // 首次提交会由 webSubmitForm 生成 web:<students._id>。
   const canIdentify = !!stu.openid || allowUnboundWeb(process.env)
 
+  const now = new Date()
+  const ym = currentMonth(now)
   const res = await db.collection('monthly_forms')
-    .where({ month: currentMonth(), status: db.command.in(['open', 'closed', 'calculated']) })
+    .where({ month: ym, status: db.command.in(['open', 'closed', 'calculated']) })
     .orderBy('createTime', 'desc')
     .limit(1)
     .get()
 
-  if (!res.data.length) {
+  // 当前月有表单（哪怕是已截止/已统计）就按原逻辑展示，只有完全没有时才回退。
+  let form = res.data[0]
+  if (!form) {
+    const fallback = await db.collection('monthly_forms')
+      .where({ status: 'open' })
+      .orderBy('month', 'desc')
+      .limit(100)
+      .get()
+    form = latestFillableFallback(fallback.data, ym)
+  }
+
+  if (!form) {
     return { ok: true, form: null, submission: null, bound, identitySource, canSubmit: false, meta }
   }
-  const form = res.data[0]
 
   // 有身份键（真实 openid 或 web:<_id>）才可能有本人提交；未绑定时为空。
   let submission = null

@@ -196,6 +196,20 @@ button.app-logout:hover:not(:disabled) {
   background: rgb(255 255 255 / 26%);
 }
 
+/* 语言切换：登录后出现在 header 右侧；登录页不显示此按钮 */
+button.app-lang {
+  padding: 6px 11px;
+  font-size: 13px;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 40%);
+  border-radius: 6px;
+}
+
+button.app-lang:hover:not(:disabled) {
+  background: rgb(255 255 255 / 18%);
+}
+
 .app-body {
   display: flex;
   flex: 1;
@@ -361,6 +375,16 @@ button.ghost:disabled {
 
 .card h1 {
   color: var(--brand);
+}
+
+/* 登录页不提供切换按钮，标题的第二行英文用小号灰字并列 */
+.card h1 .bi-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 /* 登录页身份切换：老师 / 学助。两个 tab 只切换提交到哪组云函数，不改变外观基调。 */
@@ -781,5 +805,25 @@ td:first-child {
 
   .app-main {
     padding: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-user {
+    display: none;
+  }
+
+  .app-title {
+    font-size: 14px;
+  }
+
+  button.app-lang,
+  button.app-logout {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .card {
+    padding: 22px;
   }
 }

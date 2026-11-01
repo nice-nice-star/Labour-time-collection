@@ -13,6 +13,7 @@ export interface DepartmentOption {
 }
 
 const ALL_KEY = ''
+// 内部哨兵：既作为「未设置」桶的 key，也用于判断排序位置；展示文案可随语言变化。
 const UNSET_LABEL = '未设置'
 
 /** 按姓名做子串匹配（忽略大小写与首尾空白）；关键词为空时原样返回。 */
@@ -31,8 +32,8 @@ export function departmentLabelOf(row: Pick<SubmissionRow, 'departmentText'>): s
 
 // 「未设置」永远排在最后，其余按中文排序，保证每次加载的按钮顺序稳定
 function compareOptions(a: DepartmentOption, b: DepartmentOption): number {
-  if (a.label === UNSET_LABEL || b.label === UNSET_LABEL) {
-    return a.label === b.label ? 0 : (a.label === UNSET_LABEL ? 1 : -1)
+  if (a.key === UNSET_LABEL || b.key === UNSET_LABEL) {
+    return a.key === b.key ? 0 : (a.key === UNSET_LABEL ? 1 : -1)
   }
   return a.label.localeCompare(b.label, 'zh')
 }
@@ -40,18 +41,28 @@ function compareOptions(a: DepartmentOption, b: DepartmentOption): number {
 /**
  * 由已加载的名单推导部门筛选项；空值（未设置部门）也单独成一个可筛选的桶。
  * 只列出名单里真实出现的部门：部门枚举来自云端，前端再抄一份会跟名单漂移。
+ * `allLabel` / `unsetLabel` 只影响展示，不改变用于过滤的 key。
  */
-export function buildDepartmentOptions(rows: SubmissionRow[]): DepartmentOption[] {
+export function buildDepartmentOptions(
+  rows: SubmissionRow[],
+  allLabel = '全部',
+  unsetLabel = '未设置',
+  labelOf: (key: string) => string = key => key
+): DepartmentOption[] {
   const list = Array.isArray(rows) ? rows : []
   const counts = new Map<string, number>()
   list.forEach(row => {
-    const label = departmentLabelOf(row)
-    counts.set(label, (counts.get(label) || 0) + 1)
+    const key = departmentLabelOf(row)
+    counts.set(key, (counts.get(key) || 0) + 1)
   })
   const buckets: DepartmentOption[] = []
-  counts.forEach((count, label) => buckets.push({ key: label, label, count }))
+  counts.forEach((count, key) => buckets.push({
+    key,
+    label: key === UNSET_LABEL ? unsetLabel : labelOf(key),
+    count
+  }))
   buckets.sort(compareOptions)
-  return [{ key: ALL_KEY, label: '全部', count: list.length }].concat(buckets)
+  return [{ key: ALL_KEY, label: allLabel, count: list.length }].concat(buckets)
 }
 
 /** 姓名与部门取交集。部门按展示文本精确匹配（选项就来自这份文本）。 */

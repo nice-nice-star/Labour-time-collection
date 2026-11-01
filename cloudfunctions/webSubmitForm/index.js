@@ -49,6 +49,17 @@ function deadlineAt(value) {
   return new Date(text.includes('T') ? text : text.replace(/-/g, '/')).getTime()
 }
 
+// 临时补填方案：当前月一张表单都没有时，回退到最近一个「已经开始、仍开放、
+// 未过截止时间」的月份（例如 11 月补 10 月）。已截止/已统计/未来月份不回退。
+function latestFillableFallback(forms, currentYm) {
+  return forms.find(form => {
+    if (!form || form.status !== 'open') return false
+    if (String(form.month || '') > currentYm) return false
+    const deadline = deadlineAt(form.deadline)
+    return Number.isNaN(deadline) || Date.now() <= deadline
+  }) || null
+}
+
 exports.main = async (event = {}) => {
   const stu = await requireStudent(event, db)
   if (!stu) return { ok: false, msg: '登录已过期，请重新登录' }
@@ -58,8 +69,17 @@ exports.main = async (event = {}) => {
   const fRes = await db.collection('monthly_forms')
     .where({ month: ym, status: db.command.in(['open', 'closed', 'calculated']) })
     .orderBy('createTime', 'desc').limit(1).get()
-  if (!fRes.data.length) return { ok: false, msg: '本月暂无可用表单' }
-  const form = fRes.data[0]
+  // 当前月有表单（哪怕是已截止/已统计）就按原逻辑校验，只有完全没有时才回退。
+  let form = fRes.data[0]
+  if (!form) {
+    const fallback = await db.collection('monthly_forms')
+      .where({ status: 'open' })
+      .orderBy('month', 'desc')
+      .limit(100)
+      .get()
+    form = latestFillableFallback(fallback.data, ym)
+  }
+  if (!form) return { ok: false, msg: '本月暂无可用表单' }
   if (form.status !== 'open') return { ok: false, msg: '表单已截止，无法提交' }
   const deadline = deadlineAt(form.deadline)
   if (!Number.isNaN(deadline) && Date.now() > deadline) {

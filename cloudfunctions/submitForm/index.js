@@ -13,6 +13,24 @@ const db = cloud.database()
 
 const LOCATIONS = LOCATION_OPTIONS
 
+// 与 getForm / webSubmitForm 一致：兼容 ISO 与 'YYYY-MM-DD HH:mm:ss'
+function deadlineAt(value) {
+  if (!value) return NaN
+  const text = String(value).trim()
+  return new Date(text.includes('T') ? text : text.replace(/-/g, '/')).getTime()
+}
+
+// 临时补填方案：当前月一张表单都没有时，回退到最近一个「已经开始、仍开放、
+// 未过截止时间」的月份（例如 11 月补 10 月）。已截止/已统计/未来月份都不回退。
+function latestFillableFallback(forms, currentYm) {
+  return forms.find(form => {
+    if (!form || form.status !== 'open') return false
+    if (String(form.month || '') > currentYm) return false
+    const deadline = deadlineAt(form.deadline)
+    return Number.isNaN(deadline) || Date.now() <= deadline
+  }) || null
+}
+
 function calc(answers, projectRows, isSupervisor, projects = []) {
   const duty = Number(answers.answer1) || 0
   let project = 0
@@ -47,12 +65,22 @@ exports.main = async (event) => {
   const now = new Date()
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const fRes = await db.collection('monthly_forms')
-    .where({ month: ym, status: db.command.in(['open', 'closed']) })
+    .where({ month: ym, status: db.command.in(['open', 'closed', 'calculated']) })
     .orderBy('createTime', 'desc').limit(1).get()
-  if (!fRes.data.length) return { ok: false, msg: '本月暂无可用表单' }
-  const form = fRes.data[0]
+  // 当前月有表单（哪怕是已截止/已统计）就按原逻辑校验，只有完全没有时才回退。
+  let form = fRes.data[0]
+  if (!form) {
+    const fallback = await db.collection('monthly_forms')
+      .where({ status: 'open' })
+      .orderBy('month', 'desc')
+      .limit(100)
+      .get()
+    form = latestFillableFallback(fallback.data, ym)
+  }
+  if (!form) return { ok: false, msg: '本月暂无可用表单' }
   if (form.status !== 'open') return { ok: false, msg: '表单已截止，无法提交' }
-  if (form.deadline && Date.now() > new Date(form.deadline).getTime()) {
+  const deadline = deadlineAt(form.deadline)
+  if (!Number.isNaN(deadline) && Date.now() > deadline) {
     return { ok: false, msg: '已过截止时间' }
   }
 

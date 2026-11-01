@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import AppShell from '../components/AppShell'
 import type { MonthlyForm, ProgressSummary, SubmissionRow, WebUser } from '../lib/api'
 import { fetchSubmissions, isSessionExpired } from '../lib/api'
+import { departmentDisplay, formatDateTime, formStatusText, translateServerMessage, useLanguage } from '../lib/i18n'
 import { buildDepartmentOptions, filterSubmissionRows } from '../lib/rosterFilter'
 
 interface Props {
@@ -12,10 +13,9 @@ interface Props {
   onLogout: () => void
 }
 
-const STATUS_LABELS: Record<string, string> = { open: '填报中', closed: '已截止', calculated: '已统计' }
-
 // 与小程序端「填报情况」页同一口径：只显示进度与有效工时，不显示学助填写的内容。
 export default function SubmissionsPage({ token, user, form, onBack, onLogout }: Props) {
+  const { lang, t } = useLanguage()
   const [rows, setRows] = useState<SubmissionRow[]>([])
   const [summary, setSummary] = useState<ProgressSummary | null>(null)
   const [status, setStatus] = useState<string>(form.status)
@@ -31,20 +31,26 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
     try {
       const res = await fetchSubmissions(token, form._id)
       if (isSessionExpired(res)) { onLogout(); return }
-      if (!res.ok || !res.rows) { setError(res.msg || '暂时无法获取填报情况'); return }
+      if (!res.ok || !res.rows) {
+        setError(translateServerMessage(res.msg, lang) || t('暂时无法获取填报情况'))
+        return
+      }
       setRows(res.rows)
       setSummary(res.summary || null)
       if (res.form) setStatus(res.form.status)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '无法连接云环境，请稍后重试')
+    } catch {
+      setError(t('无法连接云环境，请稍后重试'))
     } finally {
       setLoading(false)
     }
-  }, [token, form._id, onLogout])
+  }, [token, form._id, onLogout, lang, t])
 
   useEffect(() => { void load() }, [load])
 
-  const departments = useMemo(() => buildDepartmentOptions(rows), [rows])
+  const departments = useMemo(
+    () => buildDepartmentOptions(rows, t('全部'), t('未设置'), key => departmentDisplay(key, lang)),
+    [rows, t, lang]
+  )
   // 名单还没到时不校正：否则刚进页面就把「默认本部门」冲掉。
   // 数据到了再检查：选中的部门不在名单里（或名单只有一个部门、筛选没有意义）就按「全部」渲染，
   // 再把状态改回来，避免闪一屏空表。
@@ -67,19 +73,29 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h1>{form.month} 填报情况</h1>
-            <p className="helper">状态：{STATUS_LABELS[status] || status}　截止：{form.deadline || '—'}</p>
+            <h1>{t('{month} 填报情况', { month: form.month })}</h1>
+            <p className="helper">
+              {t('状态：{status}　截止：{deadline}', {
+                status: formStatusText(status, lang),
+                deadline: formatDateTime(form.deadline, lang) || '—'
+              })}
+            </p>
           </div>
           <div className="head-actions">
-            <button type="button" className="ghost" onClick={onBack}>返回列表</button>
-            <button type="button" className="ghost" onClick={() => void load()}>刷新</button>
+            <button type="button" className="ghost" onClick={onBack}>{t('返回列表')}</button>
+            <button type="button" className="ghost" onClick={() => void load()}>{t('刷新')}</button>
           </div>
         </div>
 
         <div className="panel-body">
           {summary && (
             <p className="notice">
-              名单 {summary.total} 人：已提交 {summary.submitted}，待提交 {summary.pending}，未绑定 {summary.unbound}
+              {t('名单 {total} 人：已提交 {submitted}，待提交 {pending}，未绑定 {unbound}', {
+                total: summary.total,
+                submitted: summary.submitted,
+                pending: summary.pending,
+                unbound: summary.unbound
+              })}
             </p>
           )}
 
@@ -103,35 +119,55 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
           )}
 
           <div className="filter">
-            <label htmlFor="keyword">按姓名筛选</label>
-            <input id="keyword" value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="输入姓名片段" />
+            <label htmlFor="keyword">{t('按姓名筛选')}</label>
+            <input
+              id="keyword"
+              value={keyword}
+              onChange={e => setKeyword(e.target.value)}
+              placeholder={t('输入姓名片段')}
+            />
           </div>
 
           {filtered && !loading && (
-            <p className="helper">匹配 {visible.length} / {rows.length} 人</p>
+            <p className="helper">{t('匹配 {visible} / {total} 人', { visible: visible.length, total: rows.length })}</p>
           )}
 
-          {loading ? <p className="helper">正在加载…</p> : rows.length === 0 ? (
-            <p className="helper">名单里还没有学助。</p>
+          {loading ? <p className="helper">{t('正在加载…')}</p> : rows.length === 0 ? (
+            <p className="helper">{t('名单里还没有学助。')}</p>
           ) : visible.length === 0 ? (
             <div className="filter-empty">
-              <p className="helper">没有符合当前筛选条件的学助。</p>
-              <button type="button" className="ghost" onClick={clearFilters}>清除筛选</button>
+              <p className="helper">{t('没有符合当前筛选条件的学助。')}</p>
+              <button type="button" className="ghost" onClick={clearFilters}>{t('清除筛选')}</button>
             </div>
           ) : (
             <table>
               <thead>
-                <tr><th>姓名</th><th>工号</th><th>部门</th><th>身份</th><th>状态</th><th>有效工时</th></tr>
+                <tr>
+                  <th>{t('姓名')}</th>
+                  <th>{t('学号')}</th>
+                  <th>{t('部门')}</th>
+                  <th>{t('身份')}</th>
+                  <th>{t('状态')}</th>
+                  <th>{t('有效工时')}</th>
+                </tr>
               </thead>
               <tbody>
                 {visible.map(row => (
                   <tr key={row.studentId || row.name}>
-                    <td>{row.name}{row.isSupervisor && <span className="tag">主管</span>}</td>
+                    <td>{row.name}{row.isSupervisor && <span className="tag">{t('主管')}</span>}</td>
                     <td>{row.studentId}</td>
                     {/* 展示文本由服务端按部门映射表算好，页面不再自己实现一套 */}
-                    <td>{row.departmentText || '—'}</td>
-                    <td>{row.identitySource === 'web' ? '网页账户' : row.bound ? '已绑定' : '未绑定'}</td>
-                    <td>{row.submitted ? '已填报' : row.zeroFilled ? '月结补零' : '未提交'}</td>
+                    <td>{row.departmentText ? departmentDisplay(row.departmentText, lang) : '—'}</td>
+                    <td>
+                      {row.identitySource === 'web'
+                        ? t('网页账户')
+                        : row.bound ? t('已绑定') : t('未绑定')}
+                    </td>
+                    <td>
+                      {row.submitted
+                        ? t('已填报')
+                        : row.zeroFilled ? t('月结补零') : t('未提交')}
+                    </td>
                     {/* 未提交没有申报时长，显示 — 而不是 0 */}
                     <td>{row.effectiveHours === null ? '—' : row.effectiveHours}</td>
                   </tr>

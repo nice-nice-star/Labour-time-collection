@@ -51,16 +51,16 @@ const PROJECT_ROWS = [
   { key: PROJECT_KEYS.NEWS_ARTICLE, label: '新闻稿/通讯（800字内）', labelEn: 'News article / newsletter report (within 800 words)' },
   { key: PROJECT_KEYS.FEATURE_INTERVIEW, label: '人物专访（采访+成稿）', labelEn: 'Feature interview (conducting the interview + writing the article)' },
   { key: PROJECT_KEYS.IN_DEPTH_REPORT, label: '深度报道（文字或视频）', labelEn: 'In-depth report (written or video)' },
-  { key: PROJECT_KEYS.SOCIAL_POST_COPY, label: '推文文案', labelEn: 'Social media post copywriting' },
-  { key: PROJECT_KEYS.GRAPHIC_LAYOUT, label: '图文排版', labelEn: 'Graphic-and-text layout design' },
+  { key: PROJECT_KEYS.SOCIAL_POST_COPY, label: '推文编辑', labelEn: 'Social media post editing' },
+  { key: PROJECT_KEYS.GRAPHIC_LAYOUT, label: '排版校对', labelEn: 'Layout and proofreading' },
   { key: PROJECT_KEYS.POSTER, label: '海报设计', labelEn: 'Poster design' },
-  { key: PROJECT_KEYS.LONG_GRAPHIC, label: '推文长图', labelEn: 'Long-form graphic for social media posts' },
+  { key: PROJECT_KEYS.LONG_GRAPHIC, label: '长文长图', labelEn: 'Long-form article and graphic' },
   { key: PROJECT_KEYS.SHORT_VIDEO_1MIN, label: '短视频剪辑（≤1分钟）', labelEn: 'Short video editing (≤1 minute)' },
   { key: PROJECT_KEYS.SHORT_VIDEO_3MIN, label: '短视频剪辑（1–3分钟）', labelEn: 'Short video editing (1–3 minutes)' },
   { key: PROJECT_KEYS.EVENT_COVERAGE, label: '活动跟拍（半天）', labelEn: 'Event photo/video coverage (half day)' },
   { key: PROJECT_KEYS.DATA_REPORT, label: '数据报表', labelEn: 'Data report' },
   { key: PROJECT_KEYS.RECEPTION, label: '接待活动', labelEn: 'Reception / hospitality duties' },
-  { key: PROJECT_KEYS.MANAGEMENT_PROJECT, label: '管理项目', labelEn: 'Management project' },
+  { key: PROJECT_KEYS.MANAGEMENT_PROJECT, label: '日常运营', labelEn: 'Daily operations' },
   { key: PROJECT_KEYS.TEAM_ACTIVITY, label: '集体活动', labelEn: 'Team / group activity' }
 ]
 

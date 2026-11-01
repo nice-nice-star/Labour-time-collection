@@ -736,6 +736,35 @@ test('Web 学助表单：本月没有表单时返回空表单而不是报错', a
   assert.ok(res.meta)
 })
 
+test('Web 学助表单：当前月没有表单时回退到仍开放的历史表单', async () => {
+  const seed = webFixture()
+  seed.monthly_forms = [{
+    _id: 'f10', month: '2026-10', status: 'open',
+    deadline: '2026-11-30T00:00:00Z', createTime: '2026-10-01'
+  }]
+  const h = createHarness(seed, '2026-11-05T04:00:00Z')
+  const { token } = await loginStudent(h, '学助甲', 'S1')
+
+  const res = await h.call('webGetForm', undefined, { token })
+  assert.equal(res.ok, true)
+  assert.equal(res.form.month, '2026-10')
+  assert.equal(res.canSubmit, true)
+
+  const submitted = await h.call('webSubmitForm', undefined, {
+    token,
+    dutyHours: 8,
+    shiftTime: '周二下午',
+    locationIndex: 0,
+    projects: [teamEntry()],
+    appeal: ''
+  })
+  assert.equal(submitted.ok, true)
+  assert.equal(h.tables.submissions.length, 1)
+  assert.equal(h.tables.submissions[0].formId, 'f10')
+  assert.equal(h.tables.submissions[0].month, '2026-10')
+  assert.equal(h.tables.submissions[0].openid, 'wx-a')
+})
+
 test('Web 学助提交：与小程序写同一条记录，重复提交覆盖且计算结果一致', async () => {
   const payload = {
     dutyHours: 30,
@@ -1230,7 +1259,7 @@ test('Web 统计表的项目列与小程序端 PROJECT_ROWS 同源：顺序、�
   const cols = projectColumns()
   const withRate = PROJECT_ROWS.filter(row => PROJECT_HOURS[row.key].participant != null)
   assert.deepEqual(cols, withRate.map(row => ({ key: row.key, label: row.label })))
-  // 「按实际/待定」的接待活动、管理项目没有列，但仍然留在 PROJECT_ROWS 里
+  // 「按实际/待定」的接待活动、日常运营没有列，但仍然留在 PROJECT_ROWS 里
   assert.equal(cols.length, 12)
   assert.equal(PROJECT_ROWS.length, 14)
 })
@@ -1409,6 +1438,61 @@ test('无表单、已关闭、已计算、超过截止时间均拒绝提交', as
     else if (status === 'expired') seed.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
     else seed.monthly_forms[0].status = status
     const h = createHarness(seed)
+    assert.equal((await h.call('submitForm', 'wx-a', answer)).ok, false)
+    assert.equal((h.tables.submissions || []).length, 0)
+  }
+})
+
+test('补填：当前月没有表单时回退到最近一个仍开放的历史表单', async () => {
+  const seed = fixture()
+  seed.monthly_forms = [{
+    _id: 'f10', month: '2026-10', status: 'open',
+    deadline: '2026-11-30T00:00:00Z', createTime: '2026-10-01'
+  }]
+  const h = createHarness(seed, '2026-11-05T04:00:00Z')
+
+  const view = await h.call('getForm', 'wx-a')
+  assert.equal(view.ok, true)
+  assert.equal(view.form.month, '2026-10')
+  assert.equal(view.submission, null)
+
+  const res = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 12 })
+  assert.equal(res.ok, true)
+  assert.equal(h.tables.submissions.length, 1)
+  assert.equal(h.tables.submissions[0].formId, 'f10')
+  assert.equal(h.tables.submissions[0].month, '2026-10')
+})
+
+test('补填：当前月有表单时优先当前月，已截止/已统计/过期的历史表单不回退', async () => {
+  // 11 月表单存在时优先 11 月，不会被仍开放的 10 月表单顶掉
+  const currentSeed = fixture()
+  currentSeed.monthly_forms = [
+    { _id: 'f10', month: '2026-10', status: 'open', deadline: '2026-11-30T00:00:00Z', createTime: '2026-10-01' },
+    { _id: 'f11', month: '2026-11', status: 'open', deadline: '2026-11-30T00:00:00Z', createTime: '2026-11-01' }
+  ]
+  const current = createHarness(currentSeed, '2026-11-05T04:00:00Z')
+  assert.equal((await current.call('getForm', 'wx-a')).form._id, 'f11')
+
+  // 当前月表单即使已截止，也不会回退到更早的开放表单
+  const closedCurrentSeed = fixture()
+  closedCurrentSeed.monthly_forms = [
+    { _id: 'f10', month: '2026-10', status: 'open', deadline: '2026-11-30T00:00:00Z', createTime: '2026-10-01' },
+    { _id: 'f11', month: '2026-11', status: 'closed', deadline: '2026-11-20T00:00:00Z', createTime: '2026-11-01' }
+  ]
+  const closedCurrent = createHarness(closedCurrentSeed, '2026-11-05T04:00:00Z')
+  assert.equal((await closedCurrent.call('getForm', 'wx-a')).form._id, 'f11')
+  assert.equal((await closedCurrent.call('submitForm', 'wx-a', answer)).ok, false)
+
+  // 历史表单不开放、已统计或已过截止时间时都不回退
+  for (const overrides of [
+    { status: 'closed', deadline: '2026-11-30T00:00:00Z' },
+    { status: 'calculated', deadline: '2026-11-30T00:00:00Z' },
+    { status: 'open', deadline: '2026-10-20T00:00:00Z' }
+  ]) {
+    const seed = fixture()
+    seed.monthly_forms = [{ _id: 'f10', month: '2026-10', createTime: '2026-10-01', ...overrides }]
+    const h = createHarness(seed, '2026-11-05T04:00:00Z')
+    assert.equal((await h.call('getForm', 'wx-a')).ok, false)
     assert.equal((await h.call('submitForm', 'wx-a', answer)).ok, false)
     assert.equal((h.tables.submissions || []).length, 0)
   }

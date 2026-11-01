@@ -196,6 +196,12 @@ Web 端的认证函数：
 全站外观由 `web/src/components/AppShell.tsx` + `web/src/index.css` 统一提供：顶部紫色 header（`--brand: #732160`）
 + 左侧边栏。侧边栏只是「当前在哪一页」的**指示器**（由 `active` prop 决定高亮项），条目不可点击、不做跳转；
 页面切换仍由 `App.tsx` 的 `view` 状态负责，新页面只要把内容包进 `<AppShell active="...">` 就自动继承这套外观。
+
+**中英文双语**：登录页不提供切换按钮，所有标签以「中文 / English」并列；登录后 header 右侧提供
+`English / 中文` 切换按钮，选择保存在 `localStorage` 的 `webLanguage`，默认中文，刷新后保留。
+页面文案、日期格式、表单状态、项目类型与完成情况、部门筛选按钮都跟随切换；云函数返回的常见业务错误会翻译，
+未收录的保留原文。导出的 Excel 表头仍由云函数生成，不随网页语言变化。
+
 Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js`），
 加载后在 `window.cloud` 上；用 `new cloud.Cloud({ identityless: true, resourceAppid, resourceEnv })` + `init()`。
 
@@ -235,6 +241,11 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 ### 月度表单
 > 每月一张表单（`createMonthlyForm` 按月份 upsert，重复创建是更新同一张，不是新增），
 > 截止前可反复提交覆盖，截止后整页只读。页面在 `pages/form/form`，分三段：
+
+> **临时补填（方案 A）**：当前月一张表单都没有时，`getForm` / `submitForm` / `webGetForm` / `webSubmitForm`
+> 会回退到最近一个「已经开始、仍开放、未过截止时间」的历史月份，因此 11 月可以补填 10 月的开放表单。
+> 当前月一旦有表单（包括已截止/已统计）就按原逻辑展示，不再回退；回退也不会选中未来月份或
+> `closed` / `calculated` 的表单。这是临时机制，需要同时支持多月填报时应改为显式的月份参数。
 
 | 段 | 内容 | 控件 | 落库位置 |
 | --- | --- | --- | --- |
@@ -285,16 +296,16 @@ else :
 | 新闻稿/通讯（800字内） | 2 h	           | 5 h             | 1.5 h           | 标准	                | News article / newsletter report (within 800 words)                |
 | 人物专访（采访+成稿）	 | 3–6 h	       | 10 h            | 3 h             | 复杂               	| Feature interview (conducting the interview + writing the article) |
 | 深度报道（文字或视频） | 4–8 h	       | 10 h            | 3 h             | 复杂               	| In-depth report (written or video)                                 |
-| 推文文案	             | 1.5 h	       | 5 h             | 1.5 h           | 标准               	| Social media post copywriting                                      |
-| 图文排版	             | 1–2 h	       | 3 h             | 1 h             | 标准               	| Graphic-and-text layout design                                     |
+| 推文编辑	             | 1.5 h	       | 5 h             | 1.5 h           | 标准               	| Social media post editing                                      |
+| 排版校对	             | 1–2 h	       | 3 h             | 1 h             | 标准               	| Layout and proofreading                                     |
 | 图片与海报设计         | 1–3 h	       | 5 h             | 1.5 h           | 标准               	| Illustration and Poster design                                     |
-| 推文长图	             | 2–4 h	       | 5 h             | 1.5 h           | 复杂               	| Long-form graphic for social media posts                           |
+| 长文长图	             | 2–4 h	       | 5 h             | 1.5 h           | 复杂               	| Long-form article and graphic                           |
 | 短视频制作（≤1分钟）	 | 2 h	           | 5 h             | 1.5 h           | 标准               	| Short video editing (≤1 minute)                                    |
 | 长视频                 | 2–4 h	       | 10 h            | 3 h             | 复杂               	| Long video editing                                                 |
 | 活动跟拍（半天）	     | 4 h	           | —（仅参与）     | 5 h             | 计时               	| Event photo/video coverage (half day)                              |
 | 数据报表               | 2 h	           | —（仅参与）     | 3 h             | 标准               	| Data report                                                        |
 | 接待活动               | 按实际	       | —               | 待定            | 计时               	| Reception / hospitality duties                                     |
-| 管理项目               | 按实际	       | —               | 待定            | 计时               	| Management project                                                 |
+| 日常运营               | 按实际	       | —               | 待定            | 计时               	| Daily operations                                                 |
 | 集体活动               | 2-8h	           | 10 h            | 3 h             | 标准               	| Team / group activity                                              |
 
 代码里的权威来源是 `miniprogram/config/constants.js` 的 `PROJECT_HOURS`（键为稳定键，
@@ -347,7 +358,7 @@ else :
 | -------- | ---- | ---- | -------- | ------------ | ------ | -------- | -------- | ------ | ------------ | ------ | ------------ | -------- |
 
 **项目列（N–Y，一类项目一列，填的是该类「折算工时」）**：12 个有数字费率的项目；
-「按实际/待定」的接待活动、管理项目没有列。
+「按实际/待定」的接待活动、日常运营没有列。
 
 **末尾一列（Z）**：`额外工时申诉`（表单第 6 题），没填就留空。
 
@@ -379,7 +390,7 @@ else :
 - [x] 未绑定微信的学助网页填报：临时方案（`WEB_ALLOW_UNBOUND=true`，自动 `web:<_id>` + 绑定迁移）
 - [ ] 试点结束后清理临时网页身份，统一 `submissions` 的身份关联键
 - [x] 值班工时占位符：playerName每个月不超过12个小时
-- [x] **学助中英文版本，老师只需要中文。**
+- [x] **小程序端：学助中英文版本，老师只需要中文；网页端老师与学助都支持切换。**
 - [x] 不体现预估公式
 - [x] 保留额外工时申诉
 - [x] 按照完成状态加权（以项目类型标准费率为基数）。未完成$\times 0.2$，完成$\times 0.5$，已发布$\times 1$。
