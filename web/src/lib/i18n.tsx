@@ -78,6 +78,32 @@ const EN = {
   '未提交': 'Not submitted',
   '暂时无法获取填报情况': 'Unable to load progress',
 
+  '填报明细': 'Submission details',
+  '{name} 的填报明细': '{name} · Submission details',
+  '返回填报情况': 'Back to progress',
+  '正在加载填报明细…': 'Loading submission details…',
+  '暂时无法获取填报明细': 'Unable to load submission details',
+  '详情服务鉴权异常，请联系管理员检查云函数配置': 'The detail service rejected your session. Ask the administrator to check the cloud function configuration.',
+  '该学助本月尚未提交，没有可查看的填报内容。': 'This student has not submitted this month; there is no content to show.',
+  '该学助尚未绑定微信，无法填报。': 'This student has not bound WeChat and cannot submit.',
+  '本月为月结补零记录，系统未收到该学助的填报内容。': 'This month is an auto-zero record; no submission was received.',
+  '最后提交 {date}': 'Last submitted {date}',
+  '工时汇总': 'Hours summary',
+  '值班工时': 'Duty hours',
+  '项目折算工时': 'Project hours',
+  '总工时': 'Total hours',
+  '折算工时': 'Converted hours',
+  '实际−折算': 'Actual − converted',
+  '项目合计': 'Project total',
+  '按实际': 'Actual',
+  '旧版按类型计数': 'Legacy counts by type',
+  '参与数': 'Participant count',
+  '统筹数': 'Coordinator count',
+  '没有项目产出记录。': 'No project records.',
+  '按当前费率重算；提交时快照：总工时 {total}，有效工时 {effective}': 'Recalculated at current rates. Snapshot at submission: total {total}, effective {effective}.',
+  '本页按当前费率表重算，与导出 Excel 一致；进度页的有效工时仍是提交时快照。': 'This page recalculates with the current rate table, matching the exported Excel. The progress page still shows the snapshot taken at submission.',
+  '主管按统计工时 ×1.5，有效工时最高 40 小时': 'Supervisors are multiplied by 1.5; effective hours are capped at 40.',
+
   '学助工时申报': 'Student Assistant Hours Submission',
   '{month} 月度表单': '{month} monthly form',
   '截止 {date}': 'Deadline {date}',
@@ -152,6 +178,10 @@ const SERVER_EN: Record<string, string> = {
   '无权限': 'Permission denied.',
   '缺少表单': 'Missing form.',
   '缺少月份': 'Missing month.',
+  '缺少表单或学助': 'Missing form or student.',
+  '表单不存在': 'The form does not exist.',
+  '名单中未找到该学助': 'Student not found in the roster.',
+  '名单学号重复，无法定位该学助': 'Duplicate student IDs; cannot identify the student.',
   '本月暂无可用表单': 'No form is available for this month.',
   '表单已截止，无法提交': 'The form is closed and cannot be submitted.',
   '已过截止时间': 'The deadline has passed.',
@@ -221,13 +251,27 @@ export function projectStatusText(status: string, lang: Lang): string {
   return status
 }
 
-/** 服务端下发的 departmentText 是「中文 English」；英文界面只显示英文部分。 */
+/** 服务端下发的 departmentText 是中文名；兼容「中文 English」的合并写法。 */
+const DEPARTMENT_EN: Record<string, string> = {
+  '公共关系': 'Public Relations',
+  '国内社媒': 'Domestic social Media',
+  '多媒体中心': 'Multimedia center',
+  '大学新闻中心记者': 'Journalist, News Center',
+  '海外社媒': 'Overseas social Media',
+  '纪念品商店': 'University Gift shop',
+  '行政与数据': 'Administration and Data',
+  '神仙湖畔杂志社': 'Magazine publisher'
+}
+
 export function departmentDisplay(text: string | null | undefined, lang: Lang): string {
   const raw = String(text || '').trim()
   if (lang !== 'en') return raw
   if (!raw || raw === '未设置') return translate('en', '未设置')
   const match = raw.match(/^[\u4e00-\u9fa5]+\s+(.+)$/)
-  return match ? match[1].trim() : raw
+  if (match) return match[1].trim()
+  // 「填报情况」与详情接口下发的是中文名（导出 Excel 才是「中文 English」），
+  // 英文界面按同一张表换成英文，避免半中半英。
+  return DEPARTMENT_EN[raw] || raw
 }
 
 export function formatDateTime(value: string | null | undefined, lang: Lang): string {

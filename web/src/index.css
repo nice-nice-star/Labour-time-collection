@@ -827,3 +827,225 @@ td:first-child {
     padding: 22px;
   }
 }
+
+/* ============================================================
+   填报明细（老师端单名学助）
+   ============================================================ */
+
+/* 姓名列的可点击文本：看起来像链接，但仍用 button 保留键盘可访问性 */
+.name-link {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--brand);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.name-link:hover:not(:disabled) {
+  color: var(--brand-dark);
+  background: none;
+  text-decoration: underline;
+}
+
+.name-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.detail-section {
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+
+.detail-section:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.detail-section h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-summary,
+.detail-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-summary div,
+.detail-facts div {
+  padding: 10px 12px;
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.detail-summary span,
+.detail-facts span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.detail-summary strong {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.detail-facts strong {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.detail-table-wrap {
+  overflow-x: auto;
+}
+
+.detail-table {
+  min-width: 820px;
+  margin-bottom: 0;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.detail-table th,
+.detail-table td {
+  padding: 9px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.detail-table th {
+  font-size: 12px;
+}
+
+/* 固定列宽：英文表头较长时也不会把「实际−折算」挤出可视区 */
+.detail-table th:nth-child(1),
+.detail-table td:nth-child(1) {
+  width: 10%;
+}
+
+.detail-table th:nth-child(2),
+.detail-table td:nth-child(2) {
+  width: 16%;
+}
+
+.detail-table th:nth-child(3),
+.detail-table td:nth-child(3) {
+  width: 12%;
+}
+
+.detail-table th:nth-child(4),
+.detail-table td:nth-child(4) {
+  width: 11%;
+}
+
+.detail-table th:nth-child(5),
+.detail-table td:nth-child(5) {
+  width: 21%;
+}
+
+.detail-table th:nth-child(6),
+.detail-table td:nth-child(6) {
+  width: 9%;
+}
+
+.detail-table th:nth-child(7),
+.detail-table td:nth-child(7) {
+  width: 10%;
+}
+
+.detail-table th:nth-child(8),
+.detail-table td:nth-child(8) {
+  width: 11%;
+}
+
+.detail-table th:first-child,
+.detail-table td:first-child {
+  padding-left: 12px;
+}
+
+.detail-table th:last-child,
+.detail-table td:last-child {
+  padding-right: 12px;
+}
+
+/* 项目名称/完成形式可能较长：允许换行，其余列保持单行 */
+.detail-table td.detail-name {
+  min-width: 150px;
+  white-space: normal;
+}
+
+.detail-table tfoot td {
+  font-weight: 600;
+  background: #faf7f9;
+  border-top: 1px solid var(--border);
+}
+
+.detail-text {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.detail-note {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 720px) {
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 旧版计数表只有 4 列：单独分配宽度，避免沿用 8 列的百分比显得稀疏 */
+.detail-table--legacy th:nth-child(1),
+.detail-table--legacy td:nth-child(1) {
+  width: 40%;
+}
+
+.detail-table--legacy th:nth-child(2),
+.detail-table--legacy td:nth-child(2) {
+  width: 20%;
+}
+
+.detail-table--legacy th:nth-child(3),
+.detail-table--legacy td:nth-child(3) {
+  width: 20%;
+}
+
+.detail-table--legacy th:nth-child(4),
+.detail-table--legacy td:nth-child(4) {
+  width: 20%;
+}

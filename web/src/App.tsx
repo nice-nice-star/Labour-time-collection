@@ -5,12 +5,17 @@ import FormsPage from './pages/FormsPage'
 import NewFormPage from './pages/NewFormPage'
 import StudentFormPage from './pages/StudentFormPage'
 import SubmissionsPage from './pages/SubmissionsPage'
+import SubmissionDetailPage from './pages/SubmissionDetailPage'
 import { fetchWebSession } from './lib/api'
-import type { MonthlyForm, WebRole, WebUser } from './lib/api'
+import type { MonthlyForm, SubmissionRow, WebRole, WebUser } from './lib/api'
 import { useLanguage } from './lib/i18n'
 import { clearToken, loadToken } from './lib/session'
 
-type View = { name: 'forms' } | { name: 'new' } | { name: 'progress'; form: MonthlyForm }
+type View =
+  | { name: 'forms' }
+  | { name: 'new' }
+  | { name: 'progress'; form: MonthlyForm }
+  | { name: 'detail'; form: MonthlyForm; student: SubmissionRow }
 
 interface Session {
   user: WebUser
@@ -89,6 +94,20 @@ export default function App() {
         user={session.user}
         form={view.form}
         onBack={() => setView({ name: 'forms' })}
+        onOpenDetail={student => setView({ name: 'detail', form: view.form, student })}
+        onLogout={handleLogout}
+      />
+    )
+  }
+
+  if (view.name === 'detail') {
+    return (
+      <SubmissionDetailPage
+        token={session.token}
+        user={session.user}
+        form={view.form}
+        student={view.student}
+        onBack={() => setView({ name: 'progress', form: view.form })}
         onLogout={handleLogout}
       />
     )

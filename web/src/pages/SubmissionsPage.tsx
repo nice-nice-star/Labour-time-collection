@@ -10,11 +10,13 @@ interface Props {
   user: WebUser
   form: MonthlyForm
   onBack: () => void
+  onOpenDetail: (row: SubmissionRow) => void
   onLogout: () => void
 }
 
 // 与小程序端「填报情况」页同一口径：只显示进度与有效工时，不显示学助填写的内容。
-export default function SubmissionsPage({ token, user, form, onBack, onLogout }: Props) {
+// 需要看具体内容时进入详情页（webGetSubmissionDetail，一次只取一人）。
+export default function SubmissionsPage({ token, user, form, onBack, onOpenDetail, onLogout }: Props) {
   const { lang, t } = useLanguage()
   const [rows, setRows] = useState<SubmissionRow[]>([])
   const [summary, setSummary] = useState<ProgressSummary | null>(null)
@@ -154,7 +156,18 @@ export default function SubmissionsPage({ token, user, form, onBack, onLogout }:
               <tbody>
                 {visible.map(row => (
                   <tr key={row.studentId || row.name}>
-                    <td>{row.name}{row.isSupervisor && <span className="tag">{t('主管')}</span>}</td>
+                    <td>
+                      {row.submitted || row.zeroFilled ? (
+                        <button
+                          type="button"
+                          className="name-link"
+                          onClick={() => onOpenDetail(row)}
+                        >
+                          {row.name}
+                        </button>
+                      ) : row.name}
+                      {row.isSupervisor && <span className="tag">{t('主管')}</span>}
+                    </td>
                     <td>{row.studentId}</td>
                     {/* 展示文本由服务端按部门映射表算好，页面不再自己实现一套 */}
                     <td>{row.departmentText ? departmentDisplay(row.departmentText, lang) : '—'}</td>

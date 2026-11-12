@@ -4,11 +4,11 @@
 //   基础列（新版表单带来的全部汇总字段） | 每类项目一列折算工时 | 额外工时申诉
 // 与小程序导出的长表**刻意不同**，但汇总字段与判定口径都与小程序「汇总」一致：
 // 绑定/提交/补零的判定与名单汇总走 rows.js，部门映射走 departments.js，
-// 两者都是与 webGetSubmissions 逐字节一致的副本（测试校验）。
+// 工时按当前费率表从原始填报重算（recalc.js，与 exportData 逐字节一致）。
 const { projectDetails } = require('./projectDetails')
-const { PROJECT_HOURS, hoursOfRow } = require('./constants')
+const { PROJECT_HOURS } = require('./constants')
 const { PROJECT_ROWS } = require('./projectRows')
-const { weightedHoursByKey, roundHours } = require('./project-weighting')
+const { recalcHours } = require('./recalc')
 const { buildRows, summarize } = require('./rows')
 const {
   DEPARTMENTS, DEPARTMENT_LABELS, DEPARTMENT_ALIASES, resolveDepartment
@@ -86,21 +86,6 @@ function projectColumns() {
       return rate && rate.participant != null
     })
     .map(row => ({ key: row.key, label: row.label }))
-}
-
-/**
- * 每人每类项目的折算工时：逐条加权，再加上旧版结转的计数工时，
- * 这样 12 个类型列之和恰好等于 calc.projectHours，老师可以行内对账。
- * @returns {Map<string, number>}
- */
-function hoursByKey(projectRows, projects = []) {
-  const map = weightedHoursByKey(projects)
-  ;(projectRows || []).forEach(row => {
-    const hours = hoursOfRow(row.key, row.counts)
-    if (hours == null) return          // 按实际项目没有费率，不参与折算
-    map.set(row.key, roundHours((map.get(row.key) || 0) + hours))
-  })
-  return map
 }
 
 // 项目条数与完成情况只来自逐项填报的 projects[]（月结补零的人为空）
@@ -233,18 +218,19 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
     if (first) row[2] = label
 
     if (submitted || zeroFilled) {
-      const calc = sub.calc || {}
+      // 导出是结算口径：按当前费率表从原始填报重算，不读提交时的 calc 快照。
+      const calc = recalcHours(sub)
       const stats = projectStats(sub.projects)
-      row[3] = Number(calc.dutyHours) || 0
-      row[4] = Number(calc.projectHours) || 0
-      row[5] = Number(calc.totalHours) || 0
-      row[6] = Number(calc.effectiveHours) || 0
+      row[3] = calc.dutyHours
+      row[4] = calc.projectHours
+      row[5] = calc.totalHours
+      row[6] = calc.effectiveHours
       row[7] = stats.total
       WORK_STATUS.forEach((status, i) => { row[8 + i] = stats.statuses[status] })
       row[11] = stats.actualHours
       row[12] = zeroFilled ? FILL.ZERO : FILL.SUBMITTED
       // 12 个类型列：该类的折算工时（行内之和 = 项目折算工时）
-      const hours = hoursByKey(Array.isArray(sub.projects) ? sub.legacyProjectRows : sub.projectRows, sub.projects)
+      const hours = calc.projectHoursByKey
       cols.forEach((c, i) => { row[typeFrom + i] = hours.get(c.key) || 0 })
       row[trailingFrom] = textOf((sub.answers || {}).answer6)
     } else {

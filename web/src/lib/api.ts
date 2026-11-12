@@ -164,6 +164,66 @@ export interface SubmissionsResult extends ApiResult {
   summary?: ProgressSummary
 }
 
+export type FillStatus = 'submitted' | 'zero-filled' | 'not-submitted' | 'unbound'
+
+export interface SubmissionStudent {
+  name: string
+  studentId: string
+  department: string
+  departmentText: string
+  isSupervisor: boolean
+  bound: boolean
+  identitySource?: 'wechat' | 'web' | ''
+}
+
+export interface SubmissionProjectDetail {
+  key: string
+  label: string
+  labelEn?: string
+  name: string
+  role: ProjectRole
+  status: ProjectStatus
+  completionForm: string
+  actualHours: number
+  /** null 表示「按实际/待定」项目没有折算 */
+  weightedHours: number | null
+  actualMinusWeighted: number | null
+}
+
+export interface SubmissionLegacyRow {
+  key: string
+  label: string
+  labelEn?: string
+  counts: { participant: number; coordinator: number }
+  weightedHours: number | null
+}
+
+export interface SubmissionHours {
+  /** 按当前费率表重算，与导出 Excel 同一口径 */
+  current: FormCalc
+  /** 提交时写下的快照；进度页显示的仍是这个数 */
+  snapshot: FormCalc | null
+  isSupervisor: boolean
+}
+
+export interface SubmissionDetailData {
+  source: string
+  updateTime: string | null
+  duty: { hours: number; shiftTime: string; location: string }
+  projects: SubmissionProjectDetail[]
+  legacyProjectRows: SubmissionLegacyRow[]
+  legacyProjectName: string
+  appeal: string
+  hours: SubmissionHours
+}
+
+export interface SubmissionDetailResult extends ApiResult {
+  form?: { _id: string; month: string; status: FormStatus; deadline: string }
+  student?: SubmissionStudent
+  fillStatus?: FillStatus
+  submission?: SubmissionDetailData | null
+}
+
 export interface ExportResult extends ApiResult {
   url?: string
   filename?: string
@@ -236,6 +296,15 @@ export function createMonthlyForm(token: string, month: string, deadline: string
 
 export function fetchSubmissions(token: string, formId: string): Promise<SubmissionsResult> {
   return call<SubmissionsResult>('webGetSubmissions', { token, formId })
+}
+
+/** 老师查看单名学助的当月填报明细（一次只取一人） */
+export function fetchSubmissionDetail(
+  token: string,
+  formId: string,
+  studentId: string
+): Promise<SubmissionDetailResult> {
+  return call<SubmissionDetailResult>('webGetSubmissionDetail', { token, formId, studentId })
 }
 
 export function exportMonthlyData(token: string, formId: string): Promise<ExportResult> {
