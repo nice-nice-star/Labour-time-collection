@@ -1,10 +1,9 @@
 // cloudfunctions/submitForm/index.js
 const cloud = require('wx-server-sdk')
 const { normalizeProjects, projectCounts } = require('./projects')
-const { weightedHoursByKey, roundHours } = require('./project-weighting')
+const { weightedHoursByKey, legacyHoursOfRow, roundHours } = require('./project-weighting')
 const {
   normalizeProjectRows,
-  rateOf,
   LOCATION_OPTIONS,
   resolveDepartment
 } = require('./constants')
@@ -33,16 +32,7 @@ function latestFillableFallback(forms, currentYm) {
 
 function calc(answers, projectRows, isSupervisor, projects = []) {
   const duty = Number(answers.answer1) || 0
-  let project = 0
-  projectRows.forEach(r => {
-    const counts = r.counts || {}
-    // 单值项目只开放参与；rateOf 对统筹返回 null，乘出来是 0
-    ;['participant', 'coordinator'].forEach(role => {
-      const rate = rateOf(r.key, role)
-      if (rate == null) return
-      project += rate * (Number(counts[role]) || 0)
-    })
-  })
+  let project = (projectRows || []).reduce((sum, row) => sum + (legacyHoursOfRow(row) || 0), 0)
   weightedHoursByKey(projects).forEach(hours => { project += hours })
   project = roundHours(project)
   let total = duty + project

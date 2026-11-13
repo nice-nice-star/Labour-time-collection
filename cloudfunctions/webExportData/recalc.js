@@ -13,12 +13,7 @@
 //
 // 云函数不能跨目录 require：exportData、webExportData 与 webGetSubmissionDetail
 // 各存一份，npm test 校验三份逐字节一致。
-const { rateOf } = require('./constants')
-const { weightedHoursByKey, roundHours, STATUS_WEIGHTS, ROLE_WEIGHTS } = require('./project-weighting')
-
-const ROLES = ['participant', 'coordinator']
-// 旧版计数没有完成状态；历史数据默认都是已发布产出。
-const LEGACY_STATUS = '已发布'
+const { weightedHoursByKey, roundHours, legacyHoursOfRow } = require('./project-weighting')
 
 function numberOrZero(value) {
   const n = Number(value)
@@ -31,20 +26,6 @@ function legacyRowsOf(sub) {
   return Array.isArray(sub && sub.projects)
     ? ((sub && sub.legacyProjectRows) || [])
     : ((sub && sub.projectRows) || [])
-}
-
-// 旧版一行 counts → 折算工时。没有费率的项目返回 null（按实际项目只在 projects[] 里按 actualHours 计入）。
-function legacyHoursOfRow(row) {
-  const counts = (row && row.counts) || {}
-  let total = 0
-  let known = false
-  ROLES.forEach(role => {
-    const rate = rateOf(row.key, role)
-    if (rate == null) return
-    known = true
-    total += rate * STATUS_WEIGHTS[LEGACY_STATUS] * ROLE_WEIGHTS[role] * numberOrZero(counts[role])
-  })
-  return known ? total : null
 }
 
 function legacyHoursOf(rows) {

@@ -1,5 +1,4 @@
-const { rateOf } = require('../config/constants')
-const { weightedHoursByKey, roundHours } = require('../config/project-weighting')
+const { weightedHoursByKey, legacyHoursOfRow, roundHours } = require('../config/project-weighting')
 
 /**
  * 工时计算（与云端保持一致）
@@ -11,16 +10,7 @@ const { weightedHoursByKey, roundHours } = require('../config/project-weighting'
  */
 function calcHours(dutyHours, projectRows, isSupervisor, projects = []) {
   const duty = Number(dutyHours) || 0
-  let project = 0
-  ;(projectRows || []).forEach(r => {
-    const counts = (r && r.counts) || {}
-    // 单值项目只开放参与，rateOf 对统筹返回 null，乘出来仍是 0
-    ;['participant', 'coordinator'].forEach(role => {
-      const rate = rateOf(r.key, role)
-      if (rate == null) return             // 待定或该项目不开放此角色
-      project += rate * (Number(counts[role]) || 0)
-    })
-  })
+  let project = (projectRows || []).reduce((sum, row) => sum + (legacyHoursOfRow(row) || 0), 0)
   weightedHoursByKey(projects).forEach(hours => { project += hours })
   project = roundHours(project)
   let total = duty + project

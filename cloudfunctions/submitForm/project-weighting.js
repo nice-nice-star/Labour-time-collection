@@ -1,8 +1,8 @@
 // 云函数各自部署，submitForm / exportData / webExportData 保留本模块的相同副本。
 const { rateOf, isActualHoursProject } = require('./constants')
 
-const STATUS_WEIGHTS = { '未完成': 0.2, '已完成未发布': 0.5, '已发布': 1 }
-const ROLE_WEIGHTS = { coordinator: 1, participant: 0.3 }
+const STATUS_WEIGHTS = { '未完成': 0.4, '已完成未发布': 0.6, '已发布': 1 }
+const ROLE_WEIGHTS = { coordinator: 1, participant: 0.5 }
 const roundHours = value => Math.round(value * 1e8) / 1e8
 
 // 「按实际」项目直接取学助填写的 actualHours；其他项目按费率 × 状态系数 × 分工系数。
@@ -19,6 +19,21 @@ function projectHours(project) {
   return roundHours(rate * STATUS_WEIGHTS[project.status] * ROLE_WEIGHTS[project.role])
 }
 
+// 旧版一行 counts → 折算工时。没有费率的项目返回 null（按实际项目只在 projects[] 里按 actualHours 计入）。
+function legacyHoursOfRow(row) {
+  const counts = (row && row.counts) || {}
+  let total = 0
+  let known = false
+  for (const role of ['participant', 'coordinator']) {
+    const rate = rateOf(row && row.key, role)
+    if (rate == null) continue
+    known = true
+    const count = Number(counts[role])
+    if (Number.isFinite(count) && count > 0) total += rate * STATUS_WEIGHTS['已发布'] * ROLE_WEIGHTS[role] * count
+  }
+  return known ? total : null
+}
+
 // 原始条数仍保留在 projectRows；状态权重必须从每条 projects 明细计算。
 function weightedHoursByKey(projects) {
   const result = new Map()
@@ -29,4 +44,4 @@ function weightedHoursByKey(projects) {
   return result
 }
 
-module.exports = { STATUS_WEIGHTS, ROLE_WEIGHTS, roundHours, projectHours, weightedHoursByKey }
+module.exports = { STATUS_WEIGHTS, ROLE_WEIGHTS, roundHours, projectHours, legacyHoursOfRow, weightedHoursByKey }

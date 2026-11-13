@@ -941,8 +941,8 @@ test('Web 学助提交：旧版按类型计数的记录会保留，不会被新�
   assert.equal(row.legacyProjectRows.length, 1)
   assert.equal(row.legacyProjectRows[0].key, 'team_activity')
   assert.equal(row.projects.length, 1)
-  // 旧记录：集体活动参与 2 × 3 = 6；新记录：海报参与 1.5 × 1 × 0.3 = 0.45
-  assert.equal(row.calc.projectHours, 6.45)
+  // 旧记录：集体活动参与 2 × 3 × 0.5 = 3；新记录：海报参与 1.5 × 1 × 0.5 = 0.75
+  assert.equal(row.calc.projectHours, 3.75)
   assert.equal(row.answers.answer5, '测试项目、海报')
 })
 
@@ -1235,8 +1235,8 @@ test('Web 导出：一人一行 × 一类项目一列，汇总字段与折算对
   // 已提交：数值列 + 填报状态；14 个类型列之和必须等于「项目折算工时」
   const rowOf = name => rows.find(r => r[0] === name)
   const yi = rowOf('主管乙')
-  assert.deepEqual(yi.slice(3, 13), [30, 1.8, 47.7, 40, 0, 0, 0, 0, 0, '已提交'])
-  assert.equal(yi[26], 1.8)                       // 集体活动：2 条参与 × 费率 3 × 分工 0.3 × 已发布 1
+  assert.deepEqual(yi.slice(3, 13), [30, 3, 49.5, 40, 0, 0, 0, 0, 0, '已提交'])
+  assert.equal(yi[26], 3)                       // 集体活动：2 条参与 × 费率 3 × 分工 0.5 × 已发布 1
   const typeSum = yi.slice(13, 27).reduce((n, v) => n + (Number(v) || 0), 0)
   assert.equal(typeSum, yi[4])                    // 行内自洽
 
@@ -1293,14 +1293,14 @@ test('导出重算：cloud 函数入口也不读 calc 快照（小程序 + Web�
   const mini = await h.call('exportData', 'wx-teacher', { formId: 'f' })
   assert.equal(mini.ok, true)
   const miniRow = JSON.parse(h.uploads[0].fileContent.toString())[0].data.find(row => row[1] === 'S2')
-  assert.deepEqual(miniRow.slice(3, 7), [30, 1.8, 47.7, 40])
+  assert.deepEqual(miniRow.slice(3, 7), [30, 3, 49.5, 40])
 
   await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
   const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
   const web = await h.call('webExportData', undefined, { formId: 'f', token })
   assert.equal(web.ok, true)
   const webRow = h.workbooks[0].sheets[0].rows.map(row => row.values).find(row => row[1] === 'S2')
-  assert.deepEqual(webRow.slice(3, 7), [30, 1.8, 47.7, 40])
+  assert.deepEqual(webRow.slice(3, 7), [30, 3, 49.5, 40])
 })
 
 test('Web 统计表：名单里所有部门都会导出，未知/已移除的部门各自成块', () => {
@@ -1442,14 +1442,14 @@ test('老师创建新月表单并更新截止时间，不重复创建', async ()
 test('提交并修改；用户身份和主管系数取数据库；他人无法读到我的答案', async () => {
   const h = createHarness(fixture())
   const first = await h.call('submitForm', 'wx-a', { ...answer, openid: 'wx-b', isSupervisor: true, name: '伪造' })
-  assert.equal(first.calc.totalHours, 36)      // 值班 30 + 集体活动参与 2 次 × 3 h
-  assert.equal(first.calc.effectiveHours, 36)
+  assert.equal(first.calc.totalHours, 33)      // 值班 30 + 集体活动参与 2 次 × 3 h × 0.5
+  assert.equal(first.calc.effectiveHours, 33)
   assert.equal(h.tables.submissions[0].name, '学助甲')
   assert.equal((await h.call('getForm', 'wx-b')).submission, null)
   assert.equal((await h.call('getForm', 'wx-a')).submission.answers.answer1, '30')
   await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 40 })
   assert.equal(h.tables.submissions.length, 1)
-  assert.equal(h.tables.submissions[0].calc.totalHours, 46)   // 值班 40 + 6
+  assert.equal(h.tables.submissions[0].calc.totalHours, 43)   // 值班 40 + 3
   assert.equal((await h.call('listForms', 'wx-teacher')).forms[0].count, 1)
 })
 
@@ -1476,8 +1476,8 @@ test('所有项目费率、单值项目不开放统筹、主管倍率和 40 小�
     const mixed = [{ key: 'team_activity', counts: { participant: 2, coordinator: 1 } }]
     const mixedResult = await h.call('submitForm', who, { ...answer, dutyHours: 30, projectRows: mixed })
     assert.deepEqual(mixedResult.calc, calcHours(30, mixed, isSupervisor))
-    assert.equal(mixedResult.calc.projectHours, 16)                        // 2×3 + 10×1
-    assert.equal(mixedResult.calc.totalHours, isSupervisor ? 69 : 46)      // 主管：(30+16)×1.5
+    assert.equal(mixedResult.calc.projectHours, 13)                        // 2×3×0.5 + 10×1
+    assert.equal(mixedResult.calc.totalHours, isSupervisor ? 64.5 : 43)      // 主管：(30+13)×1.5
     assert.equal(mixedResult.calc.effectiveHours, 40)
 
     const zero = await h.call('submitForm', who, { ...answer, dutyHours: 0, projectRows: [] })
@@ -1486,7 +1486,7 @@ test('所有项目费率、单值项目不开放统筹、主管倍率和 40 小�
 })
 
 test('有效工时最高 40 小时；前端预估与云端存储先算主管倍率再封顶', async () => {
-  const twoTeamActivities = [{ key: 'team_activity', counts: { participant: 2, coordinator: 0 } }] // 2×3 = 6 h
+  const twoTeamActivities = [{ key: 'team_activity', counts: { participant: 2, coordinator: 0 } }] // 2×3×0.5 = 3 h
   const cases = [
     { duty: 0, supervisor: false, projectHours: 0, total: 0, effective: 0 },
     { duty: 30, supervisor: false, projectHours: 0, total: 30, effective: 30 },
@@ -1500,10 +1500,10 @@ test('有效工时最高 40 小时；前端预估与云端存储先算主管倍�
     { duty: 27, supervisor: true, projectHours: 0, total: 40.5, effective: 40 },
     { duty: 30, supervisor: true, projectHours: 0, total: 45, effective: 40 },
     { duty: 50, supervisor: true, projectHours: 0, total: 75, effective: 40 },
-    // 项目工时 6 h：主管先 ×1.5 再封顶
-    { duty: 35, rows: twoTeamActivities, supervisor: true, projectHours: 6, total: 61.5, effective: 40 },
-    { duty: 24, rows: twoTeamActivities, supervisor: true, projectHours: 6, total: 45, effective: 40 },
-    { duty: 20, rows: twoTeamActivities, supervisor: true, projectHours: 6, total: 39, effective: 39 }
+    // 项目工时 3 h：主管先 ×1.5 再封顶
+    { duty: 35, rows: twoTeamActivities, supervisor: true, projectHours: 3, total: 57, effective: 40 },
+    { duty: 24, rows: twoTeamActivities, supervisor: true, projectHours: 3, total: 40.5, effective: 40 },
+    { duty: 20, rows: twoTeamActivities, supervisor: true, projectHours: 3, total: 34.5, effective: 34.5 }
   ]
   for (const { duty, rows = [], supervisor, projectHours, total, effective } of cases) {
     const expected = { dutyHours: duty, projectHours, totalHours: total, effectiveHours: effective }
@@ -1591,8 +1591,8 @@ test('补填：当前月有表单时优先当前月，已截止/已统计/过期
 test('完整工作流：提交、到期关闭、未提交补零、重复计算、两张表导出', async () => {
   const h = createHarness(fixture())
   await h.call('submitForm', 'wx-b', { ...answer, projects: [teamEntry(), teamEntry()] })
-  assert.equal(h.tables.submissions[0].calc.projectHours, 1.8)
-  assert.equal(h.tables.submissions[0].calc.totalHours, 47.7)   // 主管：(30 + 2 × 3 × 0.3) × 1.5
+  assert.equal(h.tables.submissions[0].calc.projectHours, 3)
+  assert.equal(h.tables.submissions[0].calc.totalHours, 49.5)   // 主管：(30 + 2 × 3 × 0.5) × 1.5
   assert.equal(h.tables.submissions[0].calc.effectiveHours, 40)
   // 同类型两条申报在落库时汇总成一个计数
   assert.deepEqual(h.tables.submissions[0].projectRows, [
@@ -1617,7 +1617,7 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   assert.deepEqual(sheets[0].data[0], ['姓名', '学号', '部门', '值班工时', '项目折算工时', '总工时', '有效工时', '项目条数', '已发布', '已完成未发布', '未完成', '实际耗时合计', '填报状态', '额外工时申诉'])
   assert.equal(sheets[0].data.length, 4)   // 表头 + 3 名学助（含未绑定）
   const summary = name => sheets[0].data.find(row => row[0] === name)
-  assert.deepEqual(summary('主管乙'), ['主管乙', 'S2', '行政与数据', 30, 1.8, 47.7, 40, 2, 2, 0, 0, 4, '已提交', ''])
+  assert.deepEqual(summary('主管乙'), ['主管乙', 'S2', '行政与数据', 30, 3, 49.5, 40, 2, 2, 0, 0, 4, '已提交', ''])
   assert.equal(summary('学助甲')[6], 0)
   assert.equal(summary('学助甲')[12], '月结补零')
   assert.equal(summary('待绑定丙')[12], '未绑定')
@@ -1628,8 +1628,8 @@ test('完整工作流：提交、到期关闭、未提交补零、重复计算�
   assert.deepEqual(sheets[1].data[0], ['姓名', '学号', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时', '实际−折算'])
   assert.equal(sheets[1].data.length, 3)
   assert.deepEqual(sheets[1].data.slice(1), [
-    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 0.9, 1.1],
-    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 0.9, 1.1]
+    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 1.5, 0.5],
+    ['主管乙', 'S2', '行政与数据', '集体活动', '运动会', '参与', '已发布', '现场', 2, 1, 0, 1.5, 0.5]
   ])
 })
 
@@ -1652,14 +1652,14 @@ test('项目明细工作表：一条申报一行、完成情况与折算工时�
   assert.deepEqual(detail.data[0], ['姓名', '学号', '部门', '项目类型', '项目名称', '项目分工', '完成情况', '完成形式', '实际完成时间（hrs）', '参与数', '统筹数', '折算工时', '实际−折算'])
   // 同类型两条海报各占一行；接待活动按学助填写的实际工时折算
   assert.deepEqual(detail.data.slice(1), [
-    ['学助甲', 'S1', '行政与数据', '集体活动', '团建', '统筹', '已完成未发布', '待发', 6, 0, 1, 5, 1],
-    ['学助甲', 'S1', '行政与数据', '图片与海报设计', '海报A', '参与', '已发布', '公众号', 1, 1, 0, 0.45, 0.55],
-    ['学助甲', 'S1', '行政与数据', '图片与海报设计', '海报B', '参与', '未完成', '—', 0, 1, 0, 0.09, -0.09],
+    ['学助甲', 'S1', '行政与数据', '集体活动', '团建', '统筹', '已完成未发布', '待发', 6, 0, 1, 6, 0],
+    ['学助甲', 'S1', '行政与数据', '图片与海报设计', '海报A', '参与', '已发布', '公众号', 1, 1, 0, 0.75, 0.25],
+    ['学助甲', 'S1', '行政与数据', '图片与海报设计', '海报B', '参与', '未完成', '—', 0, 1, 0, 0.3, -0.3],
     ['学助甲', 'S1', '行政与数据', '接待活动', '接待', '参与', '已发布', '现场', 3, 1, 0, 3, 0]
   ])
   // 汇总：按完成状态与分工系数加权；条数、各完成状态与实际耗时合计都要对得上
   const row = sheets[0].data.find(r => r[0] === '学助甲')
-  assert.deepEqual(row.slice(3), [30, 8.54, 38.54, 38.54, 4, 2, 1, 1, 10, '已提交', ''])
+  assert.deepEqual(row.slice(3), [30, 10.05, 40.05, 40, 4, 2, 1, 1, 10, '已提交', ''])
 
   // 只保留汇总与项目明细两张表
   assert.equal(sheets.length, 2)
@@ -1736,7 +1736,7 @@ test('填报情况：仅导出账户可读，学助、未绑定与缺少表单�
 
 test('填报情况：进度区分真提交与月结补零，未提交不下发工时', async () => {
   const h = createHarness(fixture())
-  await h.call('submitForm', 'wx-a', answer)            // 值班 30 + 集体活动 2×3 = 36，非主管
+  await h.call('submitForm', 'wx-a', answer)            // 值班 30 + 集体活动 2×3×0.5 = 33，非主管
   assert.equal(h.tables.submissions[0].source, 'student')
 
   let res = await h.call('getSubmissions', 'wx-teacher', { formId: 'f' })
@@ -1745,7 +1745,7 @@ test('填报情况：进度区分真提交与月结补零，未提交不下发�
   const jia = rowOf('学助甲')
   assert.equal(jia.submitted, true)
   assert.equal(jia.zeroFilled, false)
-  assert.equal(jia.effectiveHours, 36)
+  assert.equal(jia.effectiveHours, 33)
   // 已提交者取提交时快照（规范值）
   assert.equal(jia.department, 'Administration_and_Data')
   // 未提交者退回名单原值（页面负责归一化）；没有有效工时，留 null 而不是 0
@@ -1768,7 +1768,7 @@ test('填报情况：进度区分真提交与月结补零，未提交不下发�
   const jia2 = res.rows.find(r => r.name === '学助甲')
   const yi2 = res.rows.find(r => r.name === '主管乙')
   assert.equal(jia2.submitted, true)
-  assert.equal(jia2.effectiveHours, 36)
+  assert.equal(jia2.effectiveHours, 33)
   assert.equal(yi2.submitted, false)
   assert.equal(yi2.zeroFilled, true)
   assert.equal(yi2.effectiveHours, null)
@@ -1876,13 +1876,13 @@ test('填报明细：返回值班、项目与补充说明，只包含目标学�
   const p = key => res.submission.projects.find(item => item.key === key)
   assert.equal(p('team_activity').label, '集体活动')
   assert.equal(p('team_activity').labelEn, 'Team / group activity')
-  assert.equal(p('team_activity').weightedHours, 5)          // 10 × 0.5 × 1
-  assert.equal(p('team_activity').actualMinusWeighted, 1)
-  assert.equal(p('poster').weightedHours, 0.45)              // 1.5 × 1 × 0.3
+  assert.equal(p('team_activity').weightedHours, 6)          // 10 × 0.6 × 1
+  assert.equal(p('team_activity').actualMinusWeighted, 0)
+  assert.equal(p('poster').weightedHours, 0.75)              // 1.5 × 1 × 0.5
   assert.equal(p('reception').weightedHours, 3)              // 按实际：直接取 actualHours
   assert.equal(p('reception').actualMinusWeighted, 0)
   assert.deepEqual(res.submission.hours.current, {
-    dutyHours: 30, projectHours: 8.45, totalHours: 38.45, effectiveHours: 38.45
+    dutyHours: 30, projectHours: 9.75, totalHours: 39.75, effectiveHours: 39.75
   })
   assert.deepEqual(res.submission.hours.snapshot, res.submission.hours.current)
 
@@ -1937,10 +1937,10 @@ test('填报明细：旧版按类型计数保留，并给出折算工时', async
     label: '集体活动',
     labelEn: 'Team / group activity',
     counts: { participant: 2, coordinator: 0 },
-    weightedHours: 1.8
+    weightedHours: 3
   }])
   assert.deepEqual(res.submission.hours.current, {
-    dutyHours: 30, projectHours: 1.8, totalHours: 31.8, effectiveHours: 31.8
+    dutyHours: 30, projectHours: 3, totalHours: 33, effectiveHours: 33
   })
 })
 
@@ -2051,12 +2051,12 @@ test('加权模块副本一致，全部项目 × 状态 × 分工在提交、前
     const h = createHarness(fixture())
     for (const key of Object.keys(PROJECT_HOURS)) {
       for (const role of ['coordinator', 'participant']) {
-        for (const [status, weight] of [['未完成', 0.2], ['已完成未发布', 0.5], ['已发布', 1]]) {
+        for (const [status, weight] of [['未完成', 0.4], ['已完成未发布', 0.6], ['已发布', 1]]) {
           const projects = [project({ key, role, status, actualHours: 999 })]
           // 「按实际」项目直接取 actualHours，不看费率、状态与分工
           const expected = isActualHoursProject(key)
             ? 999
-            : round((rateOf(key, role) || 0) * weight * (role === 'participant' ? 0.3 : 1))
+            : round((rateOf(key, role) || 0) * weight * (role === 'participant' ? 0.5 : 1))
           const result = await h.call('submitForm', openid, { ...answer, dutyHours: 26, projects })
           assert.equal(result.ok, true)
           assert.equal(result.calc.projectHours, expected, `${key}/${role}/${status}`)
@@ -2097,21 +2097,21 @@ test('导出重算：忽略过期 calc 快照，按当前费率与原始填报�
     // 故意写坏：如果导出仍读快照，下面的断言会失败
     calc: { dutyHours: 999, projectHours: 999, totalHours: 999, effectiveHours: 999 }
   }
-  // 项目：集体活动参与已发布 3×1×0.3=0.9；海报参与未完成 1.5×0.2×0.3=0.09；主管 (30+0.99)×1.5
+  // 项目：集体活动参与已发布 3×1×0.5=1.5；海报参与未完成 1.5×0.4×0.5=0.3；主管 (30+1.8)×1.5
   const result = recalcHours(sub)
   assert.equal(result.dutyHours, 30)
-  assert.equal(result.projectHours, 0.99)
-  assert.equal(result.totalHours, 46.485)
+  assert.equal(result.projectHours, 1.8)
+  assert.equal(result.totalHours, 47.7)
   assert.equal(result.effectiveHours, 40)
 
   const mini = buildSheets({ month: '2026-10' }, [sub], students).sheets[0].data.find(row => row[1] === 'S2')
-  assert.deepEqual(mini.slice(3, 7), [30, 0.99, 46.485, 40])
+  assert.deepEqual(mini.slice(3, 7), [30, 1.8, 47.7, 40])
 
   const pivot = buildPivot({ form: { month: '2026-10' }, students, submissions: [sub] })
   const web = pivot.rows.find(row => row[1] === 'S2')
-  assert.deepEqual(web.slice(3, 7), [30, 0.99, 46.485, 40])
+  assert.deepEqual(web.slice(3, 7), [30, 1.8, 47.7, 40])
   // 14 个项目列之和与「项目折算工时」一致，老师可以行内对账
-  assert.equal(Math.round(web.slice(13, 27).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 0.99)
+  assert.equal(Math.round(web.slice(13, 27).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 1.8)
 })
 
 test('导出重算：旧版计数记录按已发布 + 分工折算，封顶 40', () => {
@@ -2126,14 +2126,14 @@ test('导出重算：旧版计数记录按已发布 + 分工折算，封顶 40',
     projectRows: [{ key: 'team_activity', label: '集体活动', counts: { participant: 2, coordinator: 1 } }],
     calc: { dutyHours: 999, projectHours: 999, totalHours: 999, effectiveHours: 999 }
   }
-  // 31 + 2×3×0.3（参与）+ 1×10×1（统筹）= 42.8 → 有效工时封顶 40
+  // 31 + 2×3×0.5（参与）+ 1×10×1（统筹）= 44 → 有效工时封顶 40
   const mini = buildSheets({ month: '2026-10' }, [sub], students).sheets[0].data.find(row => row[1] === 'S1')
-  assert.deepEqual(mini.slice(3, 7), [31, 11.8, 42.8, 40])
+  assert.deepEqual(mini.slice(3, 7), [31, 13, 44, 40])
 
   const pivot = buildPivot({ form: { month: '2026-10' }, students, submissions: [sub] })
   const web = pivot.rows.find(row => row[1] === 'S1')
-  assert.deepEqual(web.slice(3, 7), [31, 11.8, 42.8, 40])
-  assert.equal(Math.round(web.slice(13, 27).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 11.8)
+  assert.deepEqual(web.slice(3, 7), [31, 13, 44, 40])
+  assert.equal(Math.round(web.slice(13, 27).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 13)
 })
 
 test('导出重算：费率调整后旧提交按当前费率表出新数', () => {
@@ -2149,8 +2149,8 @@ test('导出重算：费率调整后旧提交按当前费率表出新数', () =>
   const original = constants.PROJECT_HOURS.poster.participant
   try {
     constants.PROJECT_HOURS.poster.participant = 10
-    // 10 × 已发布 1 × 参与 0.3 = 3
-    assert.equal(recalcHours(sub).projectHours, 3)
+    // 10 × 已发布 1 × 参与 0.5 = 5
+    assert.equal(recalcHours(sub).projectHours, 5)
   } finally {
     constants.PROJECT_HOURS.poster.participant = original
   }
@@ -2173,8 +2173,8 @@ test('逐项填报：同类型汇总、完成状态与分工加权、双端导�
   const projects = [project(), project({ role: 'participant', status: '未完成', actualHours: 100 })]
   const submitted = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 2, projects })
   assert.equal(submitted.ok, true)
-  assert.equal(submitted.calc.projectHours, 5.09)
-  assert.equal(submitted.calc.effectiveHours, 7.09)
+  assert.equal(submitted.calc.projectHours, 5.3)
+  assert.equal(submitted.calc.effectiveHours, 7.3)
   const saved = h.tables.submissions[0]
   assert.equal(saved.projects.length, 2)
   assert.equal(saved.projectRows[0].counts.participant, 1)
@@ -2195,10 +2195,10 @@ test('逐项填报：旧记录保留且重复更新不累计，空列表可清�
   await h.call('submitForm', 'wx-a', answer)
   for (let i = 0; i < 2; i++) {
     const r = await h.call('submitForm', 'wx-a', { ...answer, projects: [project()] })
-    assert.equal(r.calc.projectHours, 11)
+    assert.equal(r.calc.projectHours, 8)
   }
   const r = await h.call('submitForm', 'wx-a', { ...answer, projects: [] })
-  assert.equal(r.calc.projectHours, 6)
+  assert.equal(r.calc.projectHours, 3)
   assert.equal(h.tables.submissions[0].answers.answer5, '测试项目')
   assert.equal((await h.call('submitForm', 'wx-a', answer)).ok, false)
 })
@@ -2213,7 +2213,7 @@ test('逐项填报：服务端拒绝缺字段和非法值；标准费率乘以�
       const r = await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 0, projects: [project({ key, role })] })
       const expected = isActualHoursProject(key)
         ? 7.5
-        : Math.round((rateOf(key, role) || 0) * (role === 'participant' ? 0.3 : 1) * 1e8) / 1e8
+        : Math.round((rateOf(key, role) || 0) * (role === 'participant' ? 0.5 : 1) * 1e8) / 1e8
       assert.equal(r.calc.projectHours, expected)
     }
   }

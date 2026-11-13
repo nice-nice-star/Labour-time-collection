@@ -9,10 +9,9 @@
 const cloud = require('wx-server-sdk')
 const { requireStudent, allowUnboundWeb } = require('./webauth')
 const { normalizeProjects, projectCounts } = require('./projects')
-const { weightedHoursByKey, roundHours } = require('./project-weighting')
+const { weightedHoursByKey, legacyHoursOfRow, roundHours } = require('./project-weighting')
 const {
   normalizeProjectRows,
-  rateOf,
   LOCATION_OPTIONS,
   resolveDepartment
 } = require('./constants')
@@ -24,15 +23,7 @@ const LOCATIONS = LOCATION_OPTIONS
 // 与 submitForm 的 calc 保持同一套口径，测试会用同一份数据断言两端结果相同。
 function calc(answers, projectRows, isSupervisor, projects = []) {
   const duty = Number(answers.answer1) || 0
-  let project = 0
-  projectRows.forEach(r => {
-    const counts = r.counts || {}
-    ;['participant', 'coordinator'].forEach(role => {
-      const rate = rateOf(r.key, role)
-      if (rate == null) return
-      project += rate * (Number(counts[role]) || 0)
-    })
-  })
+  let project = (projectRows || []).reduce((sum, row) => sum + (legacyHoursOfRow(row) || 0), 0)
   weightedHoursByKey(projects).forEach(hours => { project += hours })
   project = roundHours(project)
   let total = duty + project
