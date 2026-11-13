@@ -10,7 +10,9 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 
 开发版与体验版使用 `miniprogram/config/environment.js` 的 `test`，正式版使用 `production`；当前各版本共用同一个云环境和数据库。以后需要隔离数据时，可将 `test` 改为独立测试云环境 ID；未配置时会停止连接。本地测试无需真实微信或云环境。
 
-现在是测试环境，没有历史遗留数据需要处理。
+> [!IMPORTANT]
+>
+> 现在不是测试环境，需要处理历史遗留数据！
 
 ### 账户类型
 > 1.导出账户，由相关老师负责，按照老师需求单独创建，不提供申请。拥有开启月度统计和导出数据的权限。
@@ -69,7 +71,7 @@ Labour time collection 是基于微信小程序实现的收集CPRO学生助理�
 > 功能（权限）
 > 需要集成微信登陆功能（所有帐户）
 > 填写表单（学助账户，老师首页看不到这个入口）
-> 查看填报情况（导出账户，只显示进度与每人有效工时，支持按姓名搜索与按部门筛选，不显示学助填写的内容）
+> 查看填报情况（导出账户，只显示进度与每人有效工时，支持按姓名搜索与按部门筛选；点击姓名可进入单名学助的填报明细）
 > 构建月度表单（导出账户）
 > 表单截至后自动计算（后台自动操作）
 > 导出（导出账户）
@@ -140,6 +142,10 @@ Web 端的认证函数：
 | `createMonthlyForm` | `webCreateMonthlyForm` |
 | `getSubmissions` | `webGetSubmissions` |
 | `exportData` | `webExportData` |
+| —（小程序端暂不提供） | `webGetSubmissionDetail` |
+
+老师点击姓名查看单名学助明细只走 Web 端新增的 `webGetSubmissionDetail`；
+「填报情况」页本身仍只回进度，不下发学助填写的内容。
 
 学助数据功能：
 
@@ -167,6 +173,32 @@ Web 端的认证函数：
 **必须分开命名**：安全规则是按函数名放行的，`web*` 需要 `"invoke": true`，一旦让老师函数也落到这条规则下，
 未登录访客就能调到它们，进而继承实例里残留的 `WX_OPENID`。分开命名是这套设计成立的前提。
 
+#### 老师查看单名学助填报明细（Web 端）
+
+「填报情况」表格里，已提交或月结补零的姓名是可点的按钮，进入独立页 `SubmissionDetailPage`；
+未提交 / 未绑定仍然只是文本（没有明细可看）。
+
+- 数据由 **`webGetSubmissionDetail`** 提供，入参 `{ token, formId, studentId }`。
+  只认 `role=export` 的票据（`requireExport`），一次只查一名学生，**绝不把全名单的答案一次性下发**。
+- 服务端按 `studentId` 查名单；学号重复时拒绝（避免展示错人）。再按当前 `openid` 取该月提交；
+  多条历史记录取 `updateTime` 最新的一条。返回载荷不含 `openid`、口令字段或其他学生。
+- 明细包含：值班记录、逐项项目（类型/名称/分工/完成情况/完成形式/实际耗时/折算工时）、
+  旧版按类型计数、补充说明；月结补零只显示说明与 0 工时，不伪造项目。
+- **工时主口径是当前费率重算**（与 `exportData` / `webExportData` 同一份 `recalc.js`），
+  每项折算用 `project-weighting.js`；提交时 `calc` 快照单独返回，若与重算不同，页面会额外显示快照值。
+  「填报情况」页显示的有效工时仍是快照，两者口径不同，页面有说明。
+- 老师可以看到所有部门学生的明细；页面不按老师部门限制（与列表、导出范围一致）。
+- 小程序端「填报情况」暂不提供这个入口。
+- **排障**：如果点姓名后被退回登录页，先检查 `webGetSubmissionDetail` 的 `WEB_TOKEN_SECRET`
+  是否与其他 `web*` 函数**值完全一致**（缺省/不一致/票据过期在 `requireExport` 里都表现为未登录）。
+  本函数已单独把「未配置密钥」报成配置错误；前端收到「登录已过期」时也会先用 `webSession`
+  复核票据，复核成功就停在详情页并提示检查云函数配置，不会直接清掉登录态。
+  若仍退回登录页，再看云函数日志里的 `auth-failed`：
+  - `signatureValid: false` 且 `tokenExp` 在未来 → 密钥不一致（最常见）；
+  - `signatureValid: true` 但 `accountFound: false` / `hasPassword: false` → 票据对应的账户有问题；
+  - `tokenExp` 已过去 → 票据真的过期。
+  该日志不含 token 原文、账户 `_id` 或个人信息。
+
 - 老师登录/恢复会话的 `user` 载荷是 `{ name, exportId, department, departmentText }`；学助是
   `{ name, studentId, isSupervisor, department, departmentText }`，**不带 `openid`、也不带任何口令字段**。
   `departments.js` 在 `webLogin`、`webSession`、`webStudentLogin` 各存一份与 `getSubmissions` 逐字节一致的副本。
@@ -176,21 +208,24 @@ Web 端的认证函数：
 - 因此 `students` 现在含口令哈希，数据库权限必须**禁止客户端直接读写**（小程序只经云函数访问）；
   否则规则一放松，哈希就会暴露给任意客户端。
 - 票据密钥来自云函数环境变量 **`WEB_TOKEN_SECRET`**（至少 16 字符）。**取不到就拒绝服务**，绝不退回默认值。
-  **需要签发或验签的九个 `web*` 函数必须配同一个值**（`webLogin` / `webStudentLogin` 签发，
-  `webSession`、`webGetForm`、`webSubmitForm` 与四个管理端数据函数验签；
+  **需要签发或验签的十个 `web*` 函数必须配同一个值**（`webLogin` / `webStudentLogin` 签发，
+  `webSession`、`webGetForm`、`webSubmitForm` 与五个管理端数据函数验签；
   `webBind` / `webStudentBind` 只做口令哈希，不读密钥）。值不一致会全部失败；当前只有一个云环境，只需配一个值，以后隔离环境时再各用独立密钥。
 - 登录失败一律回同一句提示（未激活 / 密码错 / 学号或工号错 / 账户不存在），避免被拿来枚举账户。
-- `webauth.js` 在十一个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
+- `webauth.js` 在十二个 `web*` 目录下各存一份副本，`npm test` 校验逐字节一致，并**禁止 `web*` 函数出现
   `getWXContext()`**（未登录模式下那是残留身份）。
 - 两边必须给出**完全一样**的业务结果，所以纯逻辑抽成共享模块、各存一份副本、由测试校验：
-  `rows.js`（填报进度口径，`getSubmissions` ↔ `webGetSubmissions` ↔ `webExportData`）、
-  `departments.js`（部门枚举/别名/中文名，同上三处）、
+  `rows.js`（填报进度口径，`getSubmissions` ↔ `webGetSubmissions` ↔ `webExportData` ↔ `webGetSubmissionDetail`）、
+  `departments.js`（部门枚举/别名/中文名，同上四处）、
   `constants.js` / `projects.js` / `project-weighting.js`（表单枚举、校验与折算，
-  `submitForm` ↔ `webSubmitForm`；`webGetForm` 另复制 `constants.js` / `projects.js`）。
+  `submitForm` ↔ `webSubmitForm`；`webGetForm` 另复制 `constants.js` / `projects.js`；
+  `webGetSubmissionDetail` 复制 `constants.js` / `project-weighting.js` 用于明细折算）、
+  `recalc.js`（按当前费率重算，`exportData` ↔ `webExportData` ↔ `webGetSubmissionDetail`）。
   测试不只比对副本字节，还**用同一份数据跑两端、断言产物完全相同**（学助网页提交与小程序提交写入的
   记录除 `_id`/时间戳外逐字段一致）。
   唯一的例外是**导出表格的版式**：Web 端出的是横向统计表，版式逻辑另起一份
-  （`webExportData/pivot.js`），只有进度口径仍与小程序端同源，详见「导出要求」。
+  （`webExportData/pivot.js`）；进度走 `rows.js`、工时走 `recalc.js`，业务口径仍与小程序端同源，
+  详见「导出要求」。
 
 前端在 `web/`（React + Vite + TypeScript）：`npm run dev` 起本地，`npm run build` 出 `dist/` 传到静态网站托管。
 全站外观由 `web/src/components/AppShell.tsx` + `web/src/index.css` 统一提供：顶部紫色 header（`--brand: #732160`）
@@ -209,7 +244,7 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 
 > 1. 开启**未登录模式**：云开发控制台 → 设置 → 全局设置/权限设置。云环境默认禁止未登录访问。
 > 2. 数据库/存储权限必须用**安全规则**配置，不能用「简易权限配置」——否则未登录用户访问不了云资源。
-> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给十一个 `web*` 函数加 `"invoke": true`：>
+> 3. **云函数安全规则**保持 `"*": { "invoke": "auth != null" }`，只给十二个 `web*` 函数加 `"invoke": true`：>
 > ```json
 > {
 >   "*":                    { "invoke": "auth != null" },
@@ -223,7 +258,8 @@ Web SDK 以 `<script>` 引入（`index.html` 里的 `res.wx.qq.com/open/js/cloud
 >   "webListForms":         { "invoke": true },
 >   "webCreateMonthlyForm": { "invoke": true },
 >   "webGetSubmissions":    { "invoke": true },
->   "webExportData":        { "invoke": true }
+>   "webExportData":        { "invoke": true },
+>   "webGetSubmissionDetail": { "invoke": true }
 > }
 > ```
 >
@@ -278,9 +314,15 @@ else :
 
 有效工时最高为 40 小时；学生主管先按统计工时乘以 1.5，再按 40 小时封顶。零工时的有效工时为 0。
 
-加权逻辑在 `miniprogram/config/project-weighting.js`，`submitForm`、`exportData`、`webExportData`
-各有相同副本，测试校验一致。计算保留最多 8 位小数，避免浮点累加尾差。
-部署本次变更时需同步上传上述三个云函数；测试环境已有提交需重新提交，才能更新已存储的汇总工时。
+加权逻辑在 `miniprogram/config/project-weighting.js`，`submitForm`、`exportData`、`webExportData`、
+`webGetSubmissionDetail` 各有相同副本，测试校验一致。计算保留最多 8 位小数，避免浮点累加尾差。
+`exportData` / `webExportData` 在导出时按**当前费率表**从 `answers`、`projects[]`、`projectRows`
+重算，不读 `submissions.calc` 快照：调整费率后不需要学生重新提交，重新导出即可得到新口径。
+「填报情况」页和 `calculateMonthly` 写下的 `calc` 仍是各自生成时的快照，页面上的有效工时不会自动变；
+老师端的**填报明细页**则按当前费率重算，并额外显示提交时快照方便对照。
+页面要同步只能重新提交或另做批量重算（当前未实现）。主管标记仍取提交记录里的快照，不跟随名单当前值。
+部署本次变更时需同步上传 `exportData`、`webExportData` 与 `webGetSubmissionDetail`
+（`recalc.js` 三份副本，测试校验逐字节一致）。
 
 
 ### 项目工时统计表
@@ -324,6 +366,9 @@ else :
 
 - 名单驱动：未绑定、已绑定但未提交的人也会出行，数值列留空；`填报状态` 为已提交 / 月结补零 / 未提交 / 未绑定。
 - `总工时 = 值班工时 + 项目折算工时`（主管 ×1.5），`有效工时 = min(40, 总工时)`，与「工时计算方法」一致。
+- 导出时按当前费率表从原始填报重算，不读 `submissions.calc` 快照；改费率后重新导出即可，不需要学生重新提交。
+- 旧版 `projectRows` 只有参与/统筹数量、没有完成状态，导出按「已发布」状态和分工系数折算；新格式 `projects[]` 按每条的状态折算。
+- 旧版记录没有逐条明细，只参与「汇总」E 列与项目列的折算，不会补进「项目明细」工作表。
 - `项目条数` 与三个完成情况列来自 `projects[]`，`实际耗时合计` 是各条实际完成时间之和。
 - `部门` 取提交时快照；未提交/未绑定的人退回名单值，归一化后转中文名（见上表「中文名」列）。
   落库值里枚举之外的旧值（含已从枚举移除的部门）原样输出，便于人工发现。
@@ -363,7 +408,9 @@ else :
 **末尾一列（Z）**：`额外工时申诉`（表单第 6 题），没填就留空。
 
 - **行内可对账**：12 个项目列的数值之和 = 该行 `项目折算工时`（按 `projects[]` 逐条加权汇总，
-  与 `calc.projectHours` 同一口径），老师不用心算也能看出有没有算错。
+  与导出重算的 `projectHours` 同一口径），老师不用心算也能看出有没有算错。
+- 基础列的工时与项目列由 `recalc.js` 按当前费率表重算（与小程序导出同一份逻辑），
+  不读 `submissions.calc` 快照；旧版 `projectRows` 计数按「已发布 + 分工」折算，项目列之和与 E 列一致。
 - `项目条数`、三个完成情况列、`实际耗时合计` 只来自逐项填报的 `projects[]`；
   月结补零的人是 0，未提交/未绑定的人整片数值留空，只在 `填报状态` 写
   `已提交` / `月结补零` / `未提交` / `未绑定`（与小程序「汇总」同一套词）。
@@ -373,6 +420,7 @@ else :
 - 外观：表头用品牌紫 `#732160` 底色 + 白色加粗居中（长项目名允许换行），表格区域逐格细边框
   （合并区域逐格上色/描边，否则合并块会缺色缺边），大标题加粗放大。样式参数集中在 `pivot.js` 的 `STYLE`。
 - **数据口径仍与小程序端同源**：绑定/提交/补零判定与汇总走 `rows.js` 副本，
+  汇总工时两端都走 `recalc.js`（逐字节一致的副本），
   所以第 2 行的填报情况与网页「填报情况」页永远一致，不同的只有版式。
 - 依赖 `exceljs`（见 `cloudfunctions/webExportData/package.json`），部署时必须选「云端安装依赖」。
   测试里用 `tests/helpers/exceljs-stub.js` 顶替，`npm test` 仍然零依赖。
@@ -387,6 +435,7 @@ else :
 - [ ] 学助的指导老师，临时学助给徐涵老师
 - [x] 学助网页端登录（`webStudentBind` / `webStudentLogin`，`webSession` 按票据 `role` 恢复会话）
 - [x] 学助网页端填写月度表单（`webGetForm` / `webSubmitForm`；与小程序共用同一条提交记录）
+- [x] 老师端点击姓名查看单名学助填报明细（`webGetSubmissionDetail`；当前费率重算，小程序端暂不提供）
 - [x] 未绑定微信的学助网页填报：临时方案（`WEB_ALLOW_UNBOUND=true`，自动 `web:<_id>` + 绑定迁移）
 - [ ] 试点结束后清理临时网页身份，统一 `submissions` 的身份关联键
 - [x] 值班工时占位符：playerName每个月不超过12个小时

@@ -358,7 +358,8 @@ const WEB_FUNCTIONS = [
   'webBind', 'webLogin', 'webSession',
   'webStudentBind', 'webStudentLogin',
   'webGetForm', 'webSubmitForm',
-  'webListForms', 'webCreateMonthlyForm', 'webGetSubmissions', 'webExportData'
+  'webListForms', 'webCreateMonthlyForm', 'webGetSubmissions', 'webExportData',
+  'webGetSubmissionDetail'
 ]
 // 小程序端与 Web 端必须共用同一份纯逻辑，否则两边口径会漂移
 const SHARED_MODULES = [
@@ -378,7 +379,15 @@ const SHARED_MODULES = [
   ['constants.js', 'submitForm', 'webSubmitForm'],
   ['projects.js', 'submitForm', 'webSubmitForm'],
   ['project-weighting.js', 'submitForm', 'webSubmitForm'],
-  ['constants.js', 'exportData', 'webExportData']
+  ['constants.js', 'exportData', 'webExportData'],
+  // 两端导出共用同一套「按当前费率重算」逻辑
+  ['recalc.js', 'exportData', 'webExportData'],
+  // 单条填报明细与进度页/导出共用同一套判定、折算与重算逻辑
+  ['rows.js', 'webGetSubmissions', 'webGetSubmissionDetail'],
+  ['departments.js', 'webGetSubmissions', 'webGetSubmissionDetail'],
+  ['constants.js', 'submitForm', 'webGetSubmissionDetail'],
+  ['project-weighting.js', 'submitForm', 'webGetSubmissionDetail'],
+  ['recalc.js', 'exportData', 'webGetSubmissionDetail']
 ]
 process.env.WEB_TOKEN_SECRET = WEB_SECRET
 
@@ -394,6 +403,11 @@ const PASSWORD = 'goodpassword'
 async function loginStudent(h, name, studentId) {
   await h.call('webStudentBind', undefined, { name, studentId, password: PASSWORD })
   return h.call('webStudentLogin', undefined, { name, studentId, password: PASSWORD })
+}
+
+async function loginExport(h, name = '老师', exportId = 'T1') {
+  await h.call('webBind', undefined, { name, exportId, password: PASSWORD })
+  return (await h.call('webLogin', undefined, { name, exportId, password: PASSWORD })).token
 }
 
 // 临时开关只在单个用例内打开，finally 恢复，避免影响其它用例。
@@ -621,7 +635,8 @@ test('学助票据不能调用老师数据接口：role 参与签名，不能靠
     ['webListForms', {}],
     ['webCreateMonthlyForm', { month: '2026-11' }],
     ['webGetSubmissions', { formId: 'f' }],
-    ['webExportData', { formId: 'f' }]
+    ['webExportData', { formId: 'f' }],
+    ['webGetSubmissionDetail', { formId: 'f', studentId: 'S1' }]
   ]
   for (const [fn, base] of guarded) {
     const res = await h.call(fn, undefined, { ...base, token })
@@ -1085,7 +1100,8 @@ test('Web 数据接口：无票据或票据无效一律拒绝，有效票据才�
     ['webListForms', {}],
     ['webCreateMonthlyForm', { month: '2026-11' }],
     ['webGetSubmissions', { formId: 'f' }],
-    ['webExportData', { formId: 'f' }]
+    ['webExportData', { formId: 'f' }],
+    ['webGetSubmissionDetail', { formId: 'f', studentId: 'S1' }]
   ]
   for (const [fn, base] of calls) {
     for (const bad of [undefined, '', 'garbage', `${token}x`, token.split('.')[0]]) {
@@ -1104,6 +1120,7 @@ test('Web 数据接口：无票据或票据无效一律拒绝，有效票据才�
   assert.equal((await h.call('webListForms', undefined, { token })).ok, true)
   assert.equal((await h.call('webGetSubmissions', undefined, { formId: 'f', token })).ok, true)
   assert.equal((await h.call('webExportData', undefined, { formId: 'f', token })).ok, true)
+  assert.equal((await h.call('webGetSubmissionDetail', undefined, { formId: 'f', studentId: 'S1', token })).ok, true)
   assert.equal((await h.call('webCreateMonthlyForm', undefined, { month: '2026-11', token })).ok, true)
   assert.equal(h.tables.monthly_forms.length, 2)
 })
@@ -1113,8 +1130,13 @@ test('Web 数据接口不吃残留的微信身份', async () => {
   // 老师先用小程序调用，实例里留下残留身份
   assert.equal((await h.call('listForms', 'wx-teacher')).ok, true)
   // 不带票据的 Web 调用不得因为残留身份而成功
-  for (const fn of ['webListForms', 'webGetSubmissions', 'webExportData']) {
-    assert.equal((await h.call(fn, undefined, { formId: 'f' })).ok, false, `${fn} 被残留身份放行了`)
+  for (const [fn, data] of [
+    ['webListForms', { formId: 'f' }],
+    ['webGetSubmissions', { formId: 'f' }],
+    ['webExportData', { formId: 'f' }],
+    ['webGetSubmissionDetail', { formId: 'f', studentId: 'S1' }]
+  ]) {
+    assert.equal((await h.call(fn, undefined, data)).ok, false, `${fn} 被残留身份放行了`)
   }
   assert.equal(h.uploads.length, 0)
 })
@@ -1164,8 +1186,8 @@ test('Web 导出：一人一行 × 一类项目一列，汇总字段与折算对
   // 已提交：数值列 + 填报状态；12 个类型列之和必须等于「项目折算工时」
   const rowOf = name => rows.find(r => r[0] === name)
   const yi = rowOf('主管乙')
-  assert.deepEqual(yi.slice(3, 13), [30, 4, 51, 40, 0, 0, 0, 0, 0, '已提交'])
-  assert.equal(yi[24], 4)                         // 集体活动：2 条参与 × 费率 2
+  assert.deepEqual(yi.slice(3, 13), [30, 1.2, 46.8, 40, 0, 0, 0, 0, 0, '已提交'])
+  assert.equal(yi[24], 1.2)                       // 集体活动：2 条参与 × 费率 2 × 分工 0.3 × 已发布 1
   const typeSum = yi.slice(13, 25).reduce((n, v) => n + (Number(v) || 0), 0)
   assert.equal(typeSum, yi[4])                    // 行内自洽
 
@@ -1211,6 +1233,25 @@ test('Web 导出：一人一行 × 一类项目一列，汇总字段与折算对
   assert.equal(sheet.rows[0].height, 22)
   assert.equal(sheet.rows[2].height, 30)
   assert.equal(sheet.rows[3].height, 13)
+})
+
+test('导出重算：cloud 函数入口也不读 calc 快照（小程序 + Web）', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-b', { ...answer, projects: [teamEntry(), teamEntry()] })
+  // 把快照故意改坏：两个导出入口都应从 answers / projects 重算
+  h.tables.submissions[0].calc = { dutyHours: 999, projectHours: 999, totalHours: 999, effectiveHours: 999 }
+
+  const mini = await h.call('exportData', 'wx-teacher', { formId: 'f' })
+  assert.equal(mini.ok, true)
+  const miniRow = JSON.parse(h.uploads[0].fileContent.toString())[0].data.find(row => row[1] === 'S2')
+  assert.deepEqual(miniRow.slice(3, 7), [30, 1.2, 46.8, 40])
+
+  await h.call('webBind', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const { token } = await h.call('webLogin', undefined, { name: '老师', exportId: 'T1', password: PASSWORD })
+  const web = await h.call('webExportData', undefined, { formId: 'f', token })
+  assert.equal(web.ok, true)
+  const webRow = h.workbooks[0].sheets[0].rows.map(row => row.values).find(row => row[1] === 'S2')
+  assert.deepEqual(webRow.slice(3, 7), [30, 1.2, 46.8, 40])
 })
 
 test('Web 统计表：名单里所有部门都会导出，未知/已移除的部门各自成块', () => {
@@ -1698,6 +1739,178 @@ test('填报情况：不下发学助填写的答案与项目明细', async () =>
   assert.equal(JSON.stringify(res).includes('周一上午'), false)
 })
 
+test('填报明细：仅老师票据可读，缺参、表单不存在与学号重复都被拒', async () => {
+  const h = createHarness(webFixture())
+  const token = await loginExport(h)
+  const base = { formId: 'f', studentId: 'S1' }
+
+  // 无票据
+  assert.equal((await h.call('webGetSubmissionDetail', undefined, base)).ok, false)
+  // 学助票据：role=student 不能进老师接口
+  const student = await loginStudent(h, '学助甲', 'S1')
+  assert.equal((await h.call('webGetSubmissionDetail', undefined, { ...base, token: student.token })).ok, false)
+
+  // 缺少参数
+  assert.equal((await h.call('webGetSubmissionDetail', undefined, { token })).ok, false)
+  assert.equal((await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f' })).ok, false)
+
+  // 表单/学助不存在
+  assert.equal(
+    (await h.call('webGetSubmissionDetail', undefined, { token, formId: 'nope', studentId: 'S1' })).msg,
+    '表单不存在'
+  )
+  assert.equal(
+    (await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S9' })).msg,
+    '名单中未找到该学助'
+  )
+
+  // 学号重复：拒绝，避免展示错人的明细
+  const dup = webFixture()
+  dup.students.push({
+    _id: 'dup', name: '重复学号', studentId: 'S1', openid: 'wx-dup',
+    isSupervisor: false, department: 'Public_Relations'
+  })
+  const h2 = createHarness(dup)
+  const token2 = await loginExport(h2)
+  assert.equal(
+    (await h2.call('webGetSubmissionDetail', undefined, { token: token2, formId: 'f', studentId: 'S1' })).msg,
+    '名单学号重复，无法定位该学助'
+  )
+})
+
+test('填报明细：新函数缺少签名密钥时给出配置错误，而不是会话过期', async () => {
+  const h = createHarness(webFixture())
+  // 先正常登录拿到票据，再模拟新函数漏配 WEB_TOKEN_SECRET
+  const token = await loginExport(h)
+  delete process.env.WEB_TOKEN_SECRET
+  try {
+    const res = await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S1' })
+    assert.equal(res.ok, false)
+    // 不能回「登录已过期」：前端会因此清票据退回登录页，掩盖真正的部署问题
+    assert.equal(res.msg, '服务未配置签名密钥，请联系管理员')
+  } finally {
+    process.env.WEB_TOKEN_SECRET = WEB_SECRET
+  }
+})
+
+test('填报明细：返回值班、项目与补充说明，只包含目标学生', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-a', {
+    dutyHours: 30,
+    shiftTime: '周一上午',
+    locationIndex: 1,
+    appeal: '申诉内容',
+    projects: [
+      { key: 'team_activity', name: '运动会', role: 'coordinator', status: '已完成未发布', completionForm: '待发', actualHours: 6 },
+      { key: 'poster', name: '海报A', role: 'participant', status: '已发布', completionForm: '公众号', actualHours: 1 },
+      { key: 'reception', name: '接待', role: 'participant', status: '已发布', completionForm: '现场', actualHours: 3 }
+    ]
+  })
+  await h.call('submitForm', 'wx-b', { ...answer, projects: [{ ...teamEntry(), name: '他人项目' }] })
+
+  const token = await loginExport(h)
+  const res = await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S1' })
+  assert.equal(res.ok, true)
+  assert.equal(res.form.month, '2026-10')
+  assert.equal(res.fillStatus, 'submitted')
+  assert.deepEqual(res.student, {
+    name: '学助甲', studentId: 'S1',
+    department: 'Administration_and_Data', departmentText: '行政与数据',
+    isSupervisor: false, bound: true, identitySource: 'wechat'
+  })
+  assert.equal(res.submission.duty.hours, 30)
+  assert.equal(res.submission.duty.shiftTime, '周一上午')
+  assert.equal(res.submission.duty.location, 'ABE303')
+  assert.equal(res.submission.appeal, '申诉内容')
+  assert.equal(res.submission.projects.length, 3)
+
+  const p = key => res.submission.projects.find(item => item.key === key)
+  assert.equal(p('team_activity').label, '集体活动')
+  assert.equal(p('team_activity').labelEn, 'Team / group activity')
+  assert.equal(p('team_activity').weightedHours, 4)          // 8 × 0.5 × 1
+  assert.equal(p('team_activity').actualMinusWeighted, 2)
+  assert.equal(p('poster').weightedHours, 0.3)               // 1 × 1 × 0.3
+  assert.equal(p('reception').weightedHours, null)           // 按实际，不折算
+  assert.equal(p('reception').actualMinusWeighted, null)
+  assert.deepEqual(res.submission.hours.current, {
+    dutyHours: 30, projectHours: 4.3, totalHours: 34.3, effectiveHours: 34.3
+  })
+  assert.deepEqual(res.submission.hours.snapshot, res.submission.hours.current)
+
+  // 只回目标学生；不泄露身份键与口令字段
+  assert.equal(JSON.stringify(res).includes('他人项目'), false)
+  assert.equal(JSON.stringify(res).includes('wx-a'), false)
+  assert.equal(JSON.stringify(res).includes('webPassword'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(res.student, 'openid'), false)
+})
+
+test('填报明细：月结补零不伪造项目，未提交与未绑定返回空明细', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-b', { ...answer, projects: [teamEntry()] })
+  h.tables.monthly_forms[0].deadline = '2026-10-14T00:00:00Z'
+  await h.call('calculateMonthly', undefined)
+  const token = await loginExport(h)
+
+  const zero = await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S1' })
+  assert.equal(zero.ok, true)
+  assert.equal(zero.fillStatus, 'zero-filled')
+  assert.equal(zero.submission.source, 'auto-zero')
+  assert.deepEqual(zero.submission.projects, [])
+  assert.deepEqual(zero.submission.legacyProjectRows, [])
+  assert.deepEqual(zero.submission.hours.current, {
+    dutyHours: 0, projectHours: 0, totalHours: 0, effectiveHours: 0
+  })
+
+  // 还没月结的 harness：已绑定未提交 / 未绑定
+  const h2 = createHarness(webFixture())
+  const token2 = await loginExport(h2)
+  const pending = await h2.call('webGetSubmissionDetail', undefined, { token: token2, formId: 'f', studentId: 'S2' })
+  assert.equal(pending.ok, true)
+  assert.equal(pending.fillStatus, 'not-submitted')
+  assert.equal(pending.submission, null)
+  const unbound = await h2.call('webGetSubmissionDetail', undefined, { token: token2, formId: 'f', studentId: 'S3' })
+  assert.equal(unbound.ok, true)
+  assert.equal(unbound.fillStatus, 'unbound')
+  assert.equal(unbound.submission, null)
+})
+
+test('填报明细：旧版按类型计数保留，并给出折算工时', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-a', answer)
+  const token = await loginExport(h)
+  const res = await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S1' })
+
+  assert.equal(res.fillStatus, 'submitted')
+  assert.deepEqual(res.submission.projects, [])
+  assert.equal(res.submission.legacyProjectName, '测试项目')
+  assert.deepEqual(res.submission.legacyProjectRows, [{
+    key: 'team_activity',
+    label: '集体活动',
+    labelEn: 'Team / group activity',
+    counts: { participant: 2, coordinator: 0 },
+    weightedHours: 1.2
+  }])
+  assert.deepEqual(res.submission.hours.current, {
+    dutyHours: 30, projectHours: 1.2, totalHours: 31.2, effectiveHours: 31.2
+  })
+})
+
+test('填报明细：主口径按当前费率重算，提交时快照单独保留', async () => {
+  const h = createHarness(webFixture())
+  await h.call('submitForm', 'wx-a', { ...answer, dutyHours: 10, projects: [] })
+  // 模拟改过费率/历史快照：数据库里的 calc 与原始填报不一致
+  h.tables.submissions[0].calc = { dutyHours: 10, projectHours: 0, totalHours: 99, effectiveHours: 40 }
+
+  const token = await loginExport(h)
+  const res = await h.call('webGetSubmissionDetail', undefined, { token, formId: 'f', studentId: 'S1' })
+  assert.deepEqual(res.submission.hours.current, {
+    dutyHours: 10, projectHours: 0, totalHours: 10, effectiveHours: 10
+  })
+  assert.deepEqual(res.submission.hours.snapshot, {
+    dutyHours: 10, projectHours: 0, totalHours: 99, effectiveHours: 40
+  })
+})
+
 test('填报情况：名单超过单次读取上限时仍返回全部记录（分页）', async () => {
   const seed = fixture()
   for (let i = 0; i < 150; i++) {
@@ -1811,6 +2024,97 @@ test('加权模块副本一致，全部项目 × 状态 × 分工在提交、前
     }
   }
 })
+test('导出重算：忽略过期 calc 快照，按当前费率与原始填报重算', () => {
+  const { buildSheets } = require('../cloudfunctions/exportData/exportCore')
+  const { buildPivot } = require('../cloudfunctions/webExportData/pivot')
+  const { recalcHours } = require('../cloudfunctions/exportData/recalc')
+  const students = fixture().students
+  const sub = {
+    _id: 's', formId: 'f', month: '2026-10', openid: 'wx-b',
+    studentId: 'S2', name: '主管乙', isSupervisor: true, source: 'student',
+    department: 'Administration_and_Data',
+    answers: { answer1: '30', answer2: '', answer3: '', answer4: '', answer5: '', answer6: '' },
+    projects: [
+      { key: 'team_activity', label: '集体活动', name: '运动会', role: 'participant', status: '已发布', completionForm: '现场', actualHours: 2 },
+      { key: 'poster', label: '海报设计', name: '海报A', role: 'participant', status: '未完成', completionForm: '—', actualHours: 1 }
+    ],
+    // projects[] 存在时 projectRows 只是汇总计数，重算不能重复计入
+    projectRows: [{ key: 'team_activity', label: '集体活动', counts: { participant: 1, coordinator: 0 } }],
+    legacyProjectRows: [],
+    // 故意写坏：如果导出仍读快照，下面的断言会失败
+    calc: { dutyHours: 999, projectHours: 999, totalHours: 999, effectiveHours: 999 }
+  }
+  // 项目：集体活动参与已发布 2×1×0.3=0.6；海报参与未完成 1×0.2×0.3=0.06；主管 (30+0.66)×1.5
+  const result = recalcHours(sub)
+  assert.equal(result.dutyHours, 30)
+  assert.equal(result.projectHours, 0.66)
+  assert.equal(result.totalHours, 45.99)
+  assert.equal(result.effectiveHours, 40)
+
+  const mini = buildSheets({ month: '2026-10' }, [sub], students).sheets[0].data.find(row => row[1] === 'S2')
+  assert.deepEqual(mini.slice(3, 7), [30, 0.66, 45.99, 40])
+
+  const pivot = buildPivot({ form: { month: '2026-10' }, students, submissions: [sub] })
+  const web = pivot.rows.find(row => row[1] === 'S2')
+  assert.deepEqual(web.slice(3, 7), [30, 0.66, 45.99, 40])
+  // 12 个项目列之和与「项目折算工时」一致，老师可以行内对账
+  assert.equal(Math.round(web.slice(13, 25).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 0.66)
+})
+
+test('导出重算：旧版计数记录按已发布 + 分工折算，封顶 40', () => {
+  const { buildSheets } = require('../cloudfunctions/exportData/exportCore')
+  const { buildPivot } = require('../cloudfunctions/webExportData/pivot')
+  const students = fixture().students
+  const sub = {
+    _id: 'legacy', formId: 'f', month: '2026-10', openid: 'wx-a',
+    studentId: 'S1', name: '学助甲', isSupervisor: false, source: 'student',
+    department: 'Administration_and_Data',
+    answers: { answer1: '31', answer6: '' },
+    projectRows: [{ key: 'team_activity', label: '集体活动', counts: { participant: 2, coordinator: 1 } }],
+    calc: { dutyHours: 999, projectHours: 999, totalHours: 999, effectiveHours: 999 }
+  }
+  // 31 + 2×2×0.3（参与）+ 1×8×1（统筹）= 40.2 → 有效工时封顶 40
+  const mini = buildSheets({ month: '2026-10' }, [sub], students).sheets[0].data.find(row => row[1] === 'S1')
+  assert.deepEqual(mini.slice(3, 7), [31, 9.2, 40.2, 40])
+
+  const pivot = buildPivot({ form: { month: '2026-10' }, students, submissions: [sub] })
+  const web = pivot.rows.find(row => row[1] === 'S1')
+  assert.deepEqual(web.slice(3, 7), [31, 9.2, 40.2, 40])
+  assert.equal(Math.round(web.slice(13, 25).reduce((sum, n) => sum + n, 0) * 1e8) / 1e8, 9.2)
+})
+
+test('导出重算：费率调整后旧提交按当前费率表出新数', () => {
+  const constants = require('../cloudfunctions/webExportData/constants')
+  const { recalcHours } = require('../cloudfunctions/webExportData/recalc')
+  const sub = {
+    isSupervisor: false,
+    answers: { answer1: '0' },
+    projects: [{ key: 'poster', role: 'participant', status: '已发布' }],
+    // 旧快照按旧费率 1 h 算出 0.3
+    calc: { dutyHours: 0, projectHours: 0.3, totalHours: 0.3, effectiveHours: 0.3 }
+  }
+  const original = constants.PROJECT_HOURS.poster.participant
+  try {
+    constants.PROJECT_HOURS.poster.participant = 10
+    // 10 × 已发布 1 × 参与 0.3 = 3
+    assert.equal(recalcHours(sub).projectHours, 3)
+  } finally {
+    constants.PROJECT_HOURS.poster.participant = original
+  }
+})
+
+test('导出重算：没有原始填报的老记录退回 calc 快照，不清零', () => {
+  const { recalcHours } = require('../cloudfunctions/exportData/recalc')
+  const result = recalcHours({
+    calc: { dutyHours: 3, projectHours: 2, totalHours: 5, effectiveHours: 5 }
+  })
+  assert.equal(result.dutyHours, 3)
+  assert.equal(result.projectHours, 2)
+  assert.equal(result.totalHours, 5)
+  assert.equal(result.effectiveHours, 5)
+  assert.equal(result.projectHoursByKey.size, 0)
+})
+
 test('逐项填报：同类型汇总、完成状态与分工加权、双端导出完整明细', async () => {
   const h = createHarness(fixture())
   const projects = [project(), project({ role: 'participant', status: '未完成', actualHours: 100 })]

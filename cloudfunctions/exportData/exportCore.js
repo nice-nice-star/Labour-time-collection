@@ -2,8 +2,11 @@
 //   1) 月度汇总（工作表名 = 表单月份）：名单驱动，一人一行，含未提交/未绑定；
 //   2) 项目明细：一条逐项申报一行。
 // 版式是纯逻辑，测试直接断言行内容；画成 xlsx 由 index.js 负责。
+// 汇总工时按当前费率表从原始填报重算（recalc.js，与 webExportData 逐字节一致），
+// 不读提交时的 calc 快照，避免改费率后导出与项目明细对不上。
 const { DEPARTMENT_LABELS, resolveDepartment } = require('./constants')
 const { projectDetails } = require('./projectDetails')
+const { recalcHours } = require('./recalc')
 
 const SUMMARY_HEADERS = ['姓名', '学号', '部门', '值班工时', '项目折算工时', '总工时', '有效工时', '项目条数', '已发布', '已完成未发布', '未完成', '实际耗时合计', '填报状态', '额外工时申诉']
 
@@ -74,17 +77,18 @@ function summaryRow(item) {
     ]
   }
   const sub = item.sub
-  const calc = sub.calc || {}
+  // 导出是结算口径：按当前费率表从原始填报重算，不读提交时的 calc 快照。
+  const calc = recalcHours(sub)
   const answers = sub.answers || {}
   const stats = projectStats(sub.projects)
   return [
     item.name,
     item.studentId,
     department,
-    Number(calc.dutyHours) || 0,
-    Number(calc.projectHours) || 0,
-    Number(calc.totalHours) || 0,
-    Number(calc.effectiveHours) || 0,
+    calc.dutyHours,
+    calc.projectHours,
+    calc.totalHours,
+    calc.effectiveHours,
     stats.total,
     stats.statuses[STATUS.PUBLISHED],
     stats.statuses[STATUS.UNPUBLISHED],
