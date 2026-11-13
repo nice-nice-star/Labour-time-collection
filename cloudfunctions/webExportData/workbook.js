@@ -58,7 +58,7 @@ async function renderWorkbook(model) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'CPRO 学助工时申报'
 
-  // 26 列的宽表：默认纵向打印会被切成好几页，这里横向 + 缩放到一页宽
+  // 28 列的宽表：默认纵向打印会被切成好几页，这里横向 + 缩放到一页宽
   const sheet = workbook.addWorksheet(model.sheetName, {
     pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
   })

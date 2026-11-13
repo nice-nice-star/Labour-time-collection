@@ -3,24 +3,31 @@
 // 该表的值必须与 miniprogram/config/constants.js 的 PROJECT_HOURS 完全一致，
 // 由 tests/workflow.test.js 的用例校验两者不会漂移。
 var HOURS = {
-  news_article: { participant: 2, coordinator: null },
-  feature_interview: { participant: 3, coordinator: 6 },
-  in_depth_report: { participant: 4, coordinator: 8 },
-  social_post_copy: { participant: 1.5, coordinator: null },
-  graphic_layout: { participant: 1, coordinator: 2 },
-  poster: { participant: 1, coordinator: 3 },
-  long_graphic: { participant: 2, coordinator: 4 },
-  short_video_1min: { participant: 2, coordinator: null },
-  short_video_3min: { participant: 2, coordinator: 4 },
-  event_coverage: { participant: 4, coordinator: null },
-  data_report: { participant: 2, coordinator: null },
+  news_article: { participant: 1.5, coordinator: 5 },
+  feature_interview: { participant: 3, coordinator: 10 },
+  in_depth_report: { participant: 3, coordinator: 10 },
+  social_post_copy: { participant: 1.5, coordinator: 5 },
+  graphic_layout: { participant: 1, coordinator: 3 },
+  poster: { participant: 1.5, coordinator: 5 },
+  long_graphic: { participant: 1.5, coordinator: 5 },
+  short_video_1min: { participant: 1.5, coordinator: 5 },
+  short_video_3min: { participant: 3, coordinator: 10 },
+  event_coverage: { participant: 5, coordinator: null },
+  data_report: { participant: 3, coordinator: null },
   reception: { participant: null, coordinator: null },
   management_project: { participant: null, coordinator: null },
-  team_activity: { participant: 2, coordinator: 8 }
+  team_activity: { participant: 3, coordinator: 10 }
 }
+
+// 「按实际」项目：没有固定费率，折算工时直接取学助填写的实际完成时间。
+var ACTUAL = { reception: true, management_project: true }
 
 function getHours(key) {
   return (key && HOURS[key]) || null
+}
+
+function isActual(key) {
+  return ACTUAL[key] === true
 }
 
 /** 取费率；null 表示该项目该角色不计入工时 */
@@ -36,16 +43,18 @@ function hasCoordinator(key) {
   return rate(key, 'coordinator') !== null
 }
 
-/** 该项目是否完全没有费率（按实际，暂不计入） */
+/** 该项目是否没有固定费率且不计入（未知项目；「按实际」项目不算 pending） */
 function isPending(key) {
+  if (isActual(key)) return false
   return getHours(key) === null || (getHours(key).participant === null && getHours(key).coordinator === null)
 }
 
 /** 项目行下方的折算标准说明 */
 function rateText(key) {
+  if (isActual(key)) return '按实际 · 计入实际工时'
   if (isPending(key)) return '按实际 · 暂不计入'
   if (!hasCoordinator(key)) return '仅参与 ' + rate(key, 'participant') + ' 小时 / 个'
   return '统筹 ' + rate(key, 'coordinator') + ' h/个 · 参与 ' + rate(key, 'participant') + ' h/个'
 }
 
-module.exports = { rate: rate, hasCoordinator: hasCoordinator, isPending: isPending, rateText: rateText }
+module.exports = { rate: rate, hasCoordinator: hasCoordinator, isActual: isActual, isPending: isPending, rateText: rateText }

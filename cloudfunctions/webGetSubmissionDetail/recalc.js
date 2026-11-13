@@ -1,7 +1,7 @@
 // 导出时重算工时：不读 submissions.calc 快照。
 //
 // submissions.calc 是提交那一刻算好的结果。费率表调整后，旧提交的汇总工时
-// 不会自己更新，导出里会出现「项目折算工时」与 12 个项目列对不上的情况。
+// 不会自己更新，导出里会出现「项目折算工时」与 14 个项目列对不上的情况。
 // 导出是结算口径，所以按当前费率表从原始填报重算；数据库里的提交记录保持原样。
 //
 // 口径：
@@ -33,7 +33,7 @@ function legacyRowsOf(sub) {
     : ((sub && sub.projectRows) || [])
 }
 
-// 旧版一行 counts → 折算工时。没有费率的项目返回 null（按实际/待定不计入）。
+// 旧版一行 counts → 折算工时。没有费率的项目返回 null（按实际项目只在 projects[] 里按 actualHours 计入）。
 function legacyHoursOfRow(row) {
   const counts = (row && row.counts) || {}
   let total = 0
@@ -58,7 +58,7 @@ function legacyHoursOf(rows) {
 }
 
 /**
- * 每人每类项目的折算工时，供 Web 统计表的 12 个项目列使用。
+ * 每人每类项目的折算工时，供 Web 统计表的 14 个项目列使用。
  * 与 recalcHours 的 projectHours 同一口径：新旧两类输入都算进来。
  * @param {object} sub submissions 记录
  * @returns {Map<string, number>}

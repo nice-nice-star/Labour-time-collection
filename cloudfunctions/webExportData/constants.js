@@ -28,29 +28,39 @@ const PROJECT_KEYS = {
 // 项目费率（每个产出项目的等效工时），键为稳定键。
 // participant 参与（区间下限）；coordinator 统筹（区间上限）。
 // coordinator 为 null 表示该项目只有参与一种算法：单值项目（README 的标准工时）
-// 与「按实际」的项目都只按参与计，表单不显示统筹输入框。
+// 与「按实际」的项目都只按参与计，表单不显示统筹输入框；
+// 「按实际」项目没有固定费率，由 project-weighting.js 直接取 actualHours。
 const PROJECT_HOURS = {
-  [PROJECT_KEYS.NEWS_ARTICLE]: { participant: 2, coordinator: null },
-  [PROJECT_KEYS.FEATURE_INTERVIEW]: { participant: 3, coordinator: 6 },
-  [PROJECT_KEYS.IN_DEPTH_REPORT]: { participant: 4, coordinator: 8 },
-  [PROJECT_KEYS.SOCIAL_POST_COPY]: { participant: 1.5, coordinator: null },
-  [PROJECT_KEYS.GRAPHIC_LAYOUT]: { participant: 1, coordinator: 2 },
-  [PROJECT_KEYS.POSTER]: { participant: 1, coordinator: 3 },
-  [PROJECT_KEYS.LONG_GRAPHIC]: { participant: 2, coordinator: 4 },
-  [PROJECT_KEYS.SHORT_VIDEO_1MIN]: { participant: 2, coordinator: null },
-  [PROJECT_KEYS.SHORT_VIDEO_3MIN]: { participant: 2, coordinator: 4 },
-  [PROJECT_KEYS.EVENT_COVERAGE]: { participant: 4, coordinator: null },
-  [PROJECT_KEYS.DATA_REPORT]: { participant: 2, coordinator: null },
-  [PROJECT_KEYS.RECEPTION]: { participant: null, coordinator: null },            // 按实际，待定
-  [PROJECT_KEYS.MANAGEMENT_PROJECT]: { participant: null, coordinator: null },   // 按实际，待定
-  [PROJECT_KEYS.TEAM_ACTIVITY]: { participant: 2, coordinator: 8 }
+  [PROJECT_KEYS.NEWS_ARTICLE]: { participant: 1.5, coordinator: 5 },
+  [PROJECT_KEYS.FEATURE_INTERVIEW]: { participant: 3, coordinator: 10 },
+  [PROJECT_KEYS.IN_DEPTH_REPORT]: { participant: 3, coordinator: 10 },
+  [PROJECT_KEYS.SOCIAL_POST_COPY]: { participant: 1.5, coordinator: 5 },
+  [PROJECT_KEYS.GRAPHIC_LAYOUT]: { participant: 1, coordinator: 3 },
+  [PROJECT_KEYS.POSTER]: { participant: 1.5, coordinator: 5 },
+  [PROJECT_KEYS.LONG_GRAPHIC]: { participant: 1.5, coordinator: 5 },
+  [PROJECT_KEYS.SHORT_VIDEO_1MIN]: { participant: 1.5, coordinator: 5 },
+  [PROJECT_KEYS.SHORT_VIDEO_3MIN]: { participant: 3, coordinator: 10 },
+  [PROJECT_KEYS.EVENT_COVERAGE]: { participant: 5, coordinator: null },
+  [PROJECT_KEYS.DATA_REPORT]: { participant: 3, coordinator: null },
+  [PROJECT_KEYS.RECEPTION]: { participant: null, coordinator: null },            // 按实际，直接取 actualHours
+  [PROJECT_KEYS.MANAGEMENT_PROJECT]: { participant: null, coordinator: null },   // 按实际，直接取 actualHours
+  [PROJECT_KEYS.TEAM_ACTIVITY]: { participant: 3, coordinator: 10 }
+}
+
+// 「按实际」项目：没有固定费率，按学助填写的 actualHours 直接计入项目折算工时。
+// 只影响新版逐项填报 projects[]；旧版按类型计数没有实际工时，仍不折算。
+const ACTUAL_HOURS_KEYS = [PROJECT_KEYS.RECEPTION, PROJECT_KEYS.MANAGEMENT_PROJECT]
+
+function isActualHoursProject(key) {
+  return ACTUAL_HOURS_KEYS.indexOf(key) !== -1
 }
 
 /**
  * 按角色取费率。展示与计算都必须走这个函数，避免两处各解释一次区间。
  * @param {string} key 稳定键
  * @param {'participant'|'coordinator'} role
- * @returns {number|null} null 表示该项目此角色不计入工时（待定或未开放统筹）
+ * @returns {number|null} null 表示该项目没有固定费率（仅参与/按实际/待定）；
+ *   「按实际」项目的工时不看费率，由 project-weighting.js 直接取 actualHours。
  */
 function rateOf(key, role) {
   const hours = PROJECT_HOURS[key]
@@ -63,7 +73,8 @@ function rateOf(key, role) {
  * 把申报数量折算成等效工时：参与数 × 参与费率 + 统筹数 × 统筹费率。
  * @param {string} key 稳定键
  * @param {{participant?:number,coordinator?:number}} counts
- * @returns {number|null} 两端费率都待定时返回 null（不写成 0，避免误读成"没有工时"）
+ * @returns {number|null} 两端费率都待定时返回 null（不写成 0，避免误读成"没有工时"）；
+ *   「按实际」项目没有固定费率，旧版计数也拿不到 actualHours，同样返回 null。
  */
 function hoursOfRow(key, counts) {
   const c = counts || {}
@@ -136,6 +147,8 @@ const DEPARTMENT_LABELS = {
 module.exports = {
   PROJECT_KEYS,
   PROJECT_HOURS,
+  ACTUAL_HOURS_KEYS,
+  isActualHoursProject,
   rateOf,
   hoursOfRow,
   DEPARTMENTS,

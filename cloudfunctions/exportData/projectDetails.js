@@ -31,7 +31,7 @@ function projectDetails(submissions, departmentText) {
         counts.participant,
         counts.coordinator,
         hours == null ? '' : hours,
-        // 实际 − 折算：正数表示实际花得比折算多；按实际项目没有折算，留空
+        // 实际 − 折算：正数表示实际花得比折算多；按实际项目折算 = 实际，差值为 0
         hours == null ? '' : roundHours(actual - hours)
       ])
     })

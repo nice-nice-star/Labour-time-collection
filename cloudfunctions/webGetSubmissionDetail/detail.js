@@ -42,7 +42,7 @@ function projectView(project) {
     status: project.status,
     completionForm: String((project && project.completionForm) || ''),
     actualHours: actual,
-    // null 表示「按实际/待定」项目没有折算，页面显示为空而不是 0
+    // 「按实际」项目直接取 actualHours；null 只表示没有固定费率且拿不到实际工时
     weightedHours: hours,
     actualMinusWeighted: hours == null ? null : roundHours(actual - hours)
   }

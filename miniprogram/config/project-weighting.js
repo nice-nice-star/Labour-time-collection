@@ -1,11 +1,17 @@
 // 云函数各自部署，submitForm / exportData / webExportData 保留本模块的相同副本。
-const { rateOf } = require('./constants')
+const { rateOf, isActualHoursProject } = require('./constants')
 
 const STATUS_WEIGHTS = { '未完成': 0.2, '已完成未发布': 0.5, '已发布': 1 }
 const ROLE_WEIGHTS = { coordinator: 1, participant: 0.3 }
 const roundHours = value => Math.round(value * 1e8) / 1e8
 
+// 「按实际」项目直接取学助填写的 actualHours；其他项目按费率 × 状态系数 × 分工系数。
 function projectHours(project) {
+  if (!project) return null
+  if (isActualHoursProject(project.key)) {
+    const actual = Number(project.actualHours)
+    return Number.isFinite(actual) && actual > 0 ? roundHours(actual) : 0
+  }
   const rate = rateOf(project.key, project.role)
   if (rate == null) return null
   if (!Object.prototype.hasOwnProperty.call(STATUS_WEIGHTS, project.status) ||

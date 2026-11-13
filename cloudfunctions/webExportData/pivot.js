@@ -6,7 +6,7 @@
 // 绑定/提交/补零的判定与名单汇总走 rows.js，部门映射走 departments.js，
 // 工时按当前费率表从原始填报重算（recalc.js，与 exportData 逐字节一致）。
 const { projectDetails } = require('./projectDetails')
-const { PROJECT_HOURS } = require('./constants')
+const { PROJECT_HOURS, isActualHoursProject } = require('./constants')
 const { PROJECT_ROWS } = require('./projectRows')
 const { recalcHours } = require('./recalc')
 const { buildRows, summarize } = require('./rows')
@@ -49,7 +49,7 @@ const STYLE = {
   tableFrom: 3
 }
 
-// 13 个基础列 + 12 个项目列 + 1 个申诉列 = 26 列，与上一版总宽度持平
+// 13 个基础列 + 14 个项目列 + 1 个申诉列 = 28 列
 const BASE_WIDTHS = [12, 13, 30, 10, 12, 10, 10, 9, 9, 12, 8, 12, 10]
 const TYPE_WIDTH = 20
 const TRAILING_WIDTHS = [20]
@@ -75,15 +75,15 @@ function colLetter(index) {
 function pad(n) { return String(n).padStart(2, '0') }
 
 /**
- * 项目列：一类项目一列，只保留有数字费率的项目——「按实际/待定」的接待活动、
- * 日常运营没有列（它们本来就算不出折算工时）。顺序与 PROJECT_ROWS 一致。
+ * 项目列：一类项目一列。有固定费率的项目与「按实际」项目都有一列；
+ * 「按实际」列填的是学助填写的实际工时。顺序与 PROJECT_ROWS 一致。
  * @returns {{key:string, label:string}[]}
  */
 function projectColumns() {
   return PROJECT_ROWS
     .filter(row => {
       const rate = PROJECT_HOURS[row.key]
-      return rate && rate.participant != null
+      return isActualHoursProject(row.key) || (rate && rate.participant != null)
     })
     .map(row => ({ key: row.key, label: row.label }))
 }
@@ -229,7 +229,7 @@ function buildPivot({ form, students, submissions, now = new Date() }) {
       WORK_STATUS.forEach((status, i) => { row[8 + i] = stats.statuses[status] })
       row[11] = stats.actualHours
       row[12] = zeroFilled ? FILL.ZERO : FILL.SUBMITTED
-      // 12 个类型列：该类的折算工时（行内之和 = 项目折算工时）
+      // 14 个类型列：该类的折算工时（行内之和 = 项目折算工时）
       const hours = calc.projectHoursByKey
       cols.forEach((c, i) => { row[typeFrom + i] = hours.get(c.key) || 0 })
       row[trailingFrom] = textOf((sub.answers || {}).answer6)
